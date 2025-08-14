@@ -200,7 +200,7 @@ typedef struct {
     drmModeCrtcPtr mode_crtc;
     uint32_t vblank_pipe;
     int dpms_mode;
-    struct dumb_bo *cursor_bo;
+    drmmode_cursor_rec cursor;
     Bool cursor_up;
     uint16_t lut_r[256], lut_g[256], lut_b[256];
 

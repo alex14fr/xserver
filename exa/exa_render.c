@@ -128,12 +128,13 @@ exaOpReadsDestination(CARD8 op)
      * That's just Clear and Src.  ReduceCompositeOp() will already have
      * converted con/disjoint clear/src to Clear or Src.
      */
-    switch (op) {
-    case PictOpClear:
-    case PictOpSrc:
-        return FALSE;
-    default:
-        return TRUE;
+    switch(op)
+    {
+        case PictOpClear:
+        case PictOpSrc:
+            return FALSE;
+        default:
+            return TRUE;
     }
 }
 
@@ -175,7 +176,8 @@ exaGetRGBAFromPixel(CARD32 pixel,
                     CARD16 *green,
                     CARD16 *blue,
                     CARD16 *alpha,
-                    PictFormatPtr pFormat, PictFormatShort format)
+                    PictFormatPtr pFormat,
+                    pixman_format_code_t format)
 {
     int rshift, bshift, gshift, ashift;
 
@@ -903,7 +905,7 @@ exaComposite(CARD8 op,
                    (pSrc->format == pDst->format ||
                     (PIXMAN_FORMAT_COLOR(pDst->format) &&
                      PIXMAN_FORMAT_COLOR(pSrc->format) &&
-                     pDst->format == PICT_FORMAT(PIXMAN_FORMAT_BPP(pSrc->format),
+                     pDst->format == PIXMAN_FORMAT(PIXMAN_FORMAT_BPP(pSrc->format),
                                                  PIXMAN_FORMAT_TYPE(pSrc->format),
                                                  0,
                                                  PIXMAN_FORMAT_R(pSrc->format),

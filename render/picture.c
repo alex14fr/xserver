@@ -26,6 +26,7 @@
 
 #include "dix/colormap_priv.h"
 #include "dix/screen_hooks_priv.h"
+#include "include/extinit.h"
 #include "os/osdep.h"
 
 #include "misc.h"
@@ -174,7 +175,7 @@ PictureCreateDefaultFormats(ScreenPtr pScreen, int *nformatp)
     formats[nformats].format = PIXMAN_a1;
     formats[nformats].depth = 1;
     nformats++;
-    formats[nformats].format = PICT_FORMAT(BitsPerPixel(8),
+    formats[nformats].format = PIXMAN_FORMAT(BitsPerPixel(8),
                                            PIXMAN_TYPE_A, 8, 0, 0, 0);
     formats[nformats].depth = 8;
     nformats++;
@@ -224,7 +225,7 @@ PictureCreateDefaultFormats(ScreenPtr pScreen, int *nformatp)
                 type = PIXMAN_TYPE_BGRA;
             }
             if (type != PIXMAN_TYPE_OTHER) {
-                format = PICT_FORMAT(bpp, type, 0, r, g, b);
+                format = PIXMAN_FORMAT(bpp, type, 0, r, g, b);
                 addFormat(formats, &nformats, format, depth);
             }
             break;
@@ -450,10 +451,8 @@ PictureInitIndexedFormats(ScreenPtr pScreen)
 Bool
 PictureFinishInit(void)
 {
-    int s;
-
-    for (s = 0; s < screenInfo.numScreens; s++) {
-        ScreenPtr walkScreen = screenInfo.screens[s];
+    for (unsigned int walkScreenIdx = 0; walkScreenIdx < screenInfo.numScreens; walkScreenIdx++) {
+        ScreenPtr walkScreen = screenInfo.screens[walkScreenIdx];
         if (!PictureInitIndexedFormats(walkScreen))
             return FALSE;
         (void) AnimCurInit(walkScreen);
@@ -660,7 +659,7 @@ PictureInit(ScreenPtr pScreen, PictFormatPtr formats, int nformats)
             g = Ones(formats[n].direct.greenMask);
             b = Ones(formats[n].direct.blueMask);
         }
-        formats[n].format = PICT_FORMAT(0, type, a, r, g, b);
+        formats[n].format = PIXMAN_FORMAT(0, type, a, r, g, b);
     }
     PictureScreenPtr ps = calloc(1, sizeof(PictureScreenRec));
     if (!ps) {
@@ -1396,7 +1395,7 @@ FreePicture(void *value, XID pid)
                 PicturePtr *pPrev;
 
                 for (pPrev = (PicturePtr *) dixLookupPrivateAddr
-                     (&pWindow->devPrivates, PictureWindowPrivateKey);
+                     (&pWindow->devPrivates, &PictureWindowPrivateKeyRec);
                      *pPrev; pPrev = &(*pPrev)->pNext) {
                     if (*pPrev == pPicture) {
                         *pPrev = pPicture->pNext;

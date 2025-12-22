@@ -103,30 +103,6 @@ typedef	struct {
 } Xtransaddr;
 #endif
 
-#ifdef LONG64
-typedef int BytesReadable_t;
-#else
-typedef long BytesReadable_t;
-#endif
-
-
-#if defined(WIN32)
-
-/*
- *      _XSERVTransWritev use struct iovec, normally found
- *      in Berkeley systems in <sys/uio.h>.  See the readv(2) and writev(2)
- *      manual pages for details.
- */
-
-struct iovec {
-    caddr_t iov_base;
-    int iov_len;
-};
-
-#else
-#include <sys/uio.h>
-#endif
-
 typedef struct _XtransConnInfo *XtransConnInfo;
 
 /*
@@ -144,15 +120,6 @@ typedef struct _XtransConnInfo *XtransConnInfo;
 
 #define TRANS_CREATE_LISTENER_FAILED 	-1
 #define TRANS_ADDR_IN_USE		-2
-
-
-/*
- * Return values of Accept (0 is success)
- */
-
-#define TRANS_ACCEPT_BAD_MALLOC			-1
-#define TRANS_ACCEPT_FAILED 			-2
-#define TRANS_ACCEPT_MISC_ERROR			-3
 
 
 /*
@@ -216,15 +183,7 @@ int _XSERVTransResetListener (
     XtransConnInfo	/* ciptr */
 );
 
-XtransConnInfo _XSERVTransAccept (
-    XtransConnInfo,	/* ciptr */
-    int *		/* status */
-);
-
-int _XSERVTransBytesReadable (
-    XtransConnInfo,	/* ciptr */
-    BytesReadable_t *	/* pend */
-);
+XtransConnInfo _XSERVTransAccept (XtransConnInfo ciptr);
 
 int _XSERVTransRead (
     XtransConnInfo,	/* ciptr */
@@ -237,8 +196,6 @@ ssize_t _XSERVTransWrite (
     const char *,	/* buf */
     size_t		/* size */
 );
-
-ssize_t _XSERVTransWritev (XtransConnInfo ciptr, struct iovec *iov, size_t iovcnt);
 
 int _XSERVTransSendFd (XtransConnInfo ciptr, int fd, int do_close);
 

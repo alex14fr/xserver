@@ -52,8 +52,14 @@ struct ms_vrr_priv {
     Bool variable_refresh;
 };
 
+struct ms_async_flip_priv {
+    Bool async_flip;
+    Bool async_flip_modifiers;
+};
+
 typedef enum {
     OPTION_SW_CURSOR,
+    OPTION_CURSOR_SIZE,
     OPTION_DEVICE_PATH,
     OPTION_SHADOW_FB,
     OPTION_ACCEL_METHOD,
@@ -131,8 +137,8 @@ typedef struct _modesettingRec {
     DamagePtr damage;
     Bool dirty_enabled;
 
-    uint32_t min_cursor_width, min_cursor_height;
-    uint32_t max_cursor_width, max_cursor_height;
+    uint32_t cursor_image_width;
+    uint32_t cursor_image_height;
 
     Bool has_queue_sequence;
     Bool tried_queue_sequence;
@@ -264,5 +270,9 @@ void ms_drain_drm_events(ScreenPtr screen);
 Bool ms_window_has_variable_refresh(modesettingPtr ms, WindowPtr win);
 void ms_present_set_screen_vrr(ScrnInfoPtr scrn, Bool vrr_enabled);
 Bool ms_tearfree_is_active_on_crtc(xf86CrtcPtr crtc);
+Bool ms_window_has_async_flip(WindowPtr win);
+void ms_window_update_async_flip(WindowPtr win, Bool async_flip);
+Bool ms_window_has_async_flip_modifiers(WindowPtr win);
+void ms_window_update_async_flip_modifiers(WindowPtr win, Bool async_flip);
 
 #endif /* XSERVER_XFREE86_DRIVER_H */

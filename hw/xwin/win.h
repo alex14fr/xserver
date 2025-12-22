@@ -150,7 +150,6 @@
 #include "scrnintstr.h"
 #include "pixmapstr.h"
 #include "pixmap.h"
-#include "region.h"
 #include "gcstruct.h"
 #include "colormap.h"
 #include "miscstruct.h"
@@ -429,8 +428,6 @@ typedef struct _winPrivScreenRec {
 
     int iConnectedClients;
 
-    CloseScreenProcPtr CloseScreen;
-
     DWORD dwRedMask;
     DWORD dwGreenMask;
     DWORD dwBlueMask;
@@ -523,6 +520,9 @@ extern winScreenInfo *g_ScreenInfo;
 extern miPointerScreenFuncRec g_winPointerCursorFuncs;
 extern DWORD g_dwEvents;
 
+#ifdef HAS_DEVWINDOWS
+extern int g_fdMessageQueue;
+#endif
 extern DevPrivateKeyRec g_iScreenPrivateKeyRec;
 
 #define g_iScreenPrivateKey  	(&g_iScreenPrivateKeyRec)

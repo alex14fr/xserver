@@ -530,7 +530,7 @@ update_front(DrawablePtr draw, DRI2BufferPtr front)
 
 static Bool
 can_exchange(ScrnInfoPtr scrn, DrawablePtr draw,
-	     DRI2BufferPtr front, DRI2BufferPtr back)
+             DRI2BufferPtr front, DRI2BufferPtr back)
 {
     ms_dri2_buffer_private_ptr front_priv = front->driverPrivate;
     ms_dri2_buffer_private_ptr back_priv = back->driverPrivate;
@@ -578,7 +578,7 @@ can_exchange(ScrnInfoPtr scrn, DrawablePtr draw,
 
 static Bool
 can_flip(ScrnInfoPtr scrn, DrawablePtr draw,
-	 DRI2BufferPtr front, DRI2BufferPtr back)
+         DRI2BufferPtr front, DRI2BufferPtr back)
 {
     modesettingPtr ms = modesettingPTR(scrn);
 
@@ -753,7 +753,7 @@ ms_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
             if (limit) {
                 xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                            "%s:%d get vblank counter failed: %s\n",
-                           __FUNCTION__, __LINE__,
+                           __func__, __LINE__,
                            strerror(errno));
                 limit--;
             }
@@ -791,7 +791,7 @@ ms_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
         if (limit) {
             xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                        "%s:%d get vblank counter failed: %s\n",
-                       __FUNCTION__, __LINE__,
+                       __func__, __LINE__,
                        strerror(errno));
             limit--;
         }

@@ -98,6 +98,8 @@
         device->public.realInputProc = oldprocs->realInputProc; \
         device->unwrapProc = oldprocs->unwrapProc;
 
+extern RESTYPE RT_XKBCLIENT;
+
 void xkbUnwrapProc(DeviceIntPtr, DeviceHandleProc, void *);
 
 void XkbForceUpdateDeviceLEDs(DeviceIntPtr keybd);
@@ -301,4 +303,8 @@ int XkbDDXUsesSoftRepeat(DeviceIntPtr dev);
 void XkbDDXKeybdCtrlProc(DeviceIntPtr dev, KeybdCtrl *ctrl);
 void XkbDDXUpdateDeviceIndicators(DeviceIntPtr dev, XkbSrvLedInfoPtr sli,
                                   CARD32 newState);
+
+KeySymsPtr XkbGetCoreMap(DeviceIntPtr keybd);
+void XkbSetRepeatKeys(DeviceIntPtr pXDev, int key, int onoff);
+
 #endif /* _XSERVER_XKBSRV_PRIV_H_ */

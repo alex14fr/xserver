@@ -20,9 +20,10 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <dix-config.h>
+#include <kdrive-config.h>
 
 #include "config/hotplug_priv.h"
+#include "dix/dix_priv.h"
 #include "dix/screenint_priv.h"
 #include "os/cmdline.h"
 #include "os/ddx_priv.h"
@@ -77,15 +78,19 @@ KdDepths kdDepths[] = {
 #define KD_DEFAULT_BUTTONS 5
 
 DevPrivateKeyRec kdScreenPrivateKeyRec;
-x_server_generation_t kdGeneration;
 
+Bool kdVideoTest;
+unsigned long kdVideoTestTime;
 Bool kdEmulateMiddleButton;
 Bool kdRawPointerCoordinates;
 Bool kdDisableZaphod;
+Bool kdAllowZap;
 Bool kdEnabled;
-static int kdSubpixelOrder;
+int kdSubpixelOrder;
+int kdVirtualTerminal = -1;
+Bool kdSwitchPending;
 char *kdSwitchCmd;
-static DDXPointRec kdOrigin;
+DDXPointRec kdOrigin;
 Bool kdHasPointer = FALSE;
 Bool kdHasKbd = FALSE;
 const char *kdGlobalXkbRules = NULL;
@@ -94,6 +99,7 @@ const char *kdGlobalXkbLayout = NULL;
 const char *kdGlobalXkbVariant = NULL;
 const char *kdGlobalXkbOptions = NULL;
 
+static Bool kdCaughtSignal = FALSE;
 
 /*
  * Carry arguments from InitOutput through driver initialization
@@ -113,7 +119,14 @@ KdDisableScreen(ScreenPtr pScreen)
     KdDisableColormap(pScreen);
     if (!pScreenPriv->screen->dumb && pScreenPriv->card->cfuncs->disableAccel)
         (*pScreenPriv->card->cfuncs->disableAccel) (pScreen);
+    if (!pScreenPriv->screen->softCursor &&
+        pScreenPriv->card->cfuncs->disableCursor)
+        (*pScreenPriv->card->cfuncs->disableCursor) (pScreen);
+    if (pScreenPriv->card->cfuncs->dpms)
+        (*pScreenPriv->card->cfuncs->dpms) (pScreen, KD_DPMS_NORMAL);
     pScreenPriv->enabled = FALSE;
+    if (pScreenPriv->card->cfuncs->disable)
+        (*pScreenPriv->card->cfuncs->disable) (pScreen);
 }
 
 static void
@@ -146,6 +159,8 @@ void KdSuspend(void)
             for (screen = card->screenList; screen; screen = screen->next)
                 if (screen->mynum == card->selected && screen->pScreen)
                     KdDisableScreen(screen->pScreen);
+            if (card->driver && card->cfuncs->restore)
+                (*card->cfuncs->restore) (card);
         }
         KdDisableInput();
         KdDoSwitchCmd("suspend");
@@ -167,24 +182,88 @@ KdEnableScreen(ScreenPtr pScreen)
 
     if (pScreenPriv->enabled)
         return TRUE;
+    if (pScreenPriv->card->cfuncs->enable)
+        if (!(*pScreenPriv->card->cfuncs->enable) (pScreen))
+            return FALSE;
     pScreenPriv->enabled = TRUE;
     pScreenPriv->dpmsState = KD_DPMS_NORMAL;
     pScreenPriv->card->selected = pScreenPriv->screen->mynum;
+    if (!pScreenPriv->screen->softCursor &&
+        pScreenPriv->card->cfuncs->enableCursor)
+        (*pScreenPriv->card->cfuncs->enableCursor) (pScreen);
     if (!pScreenPriv->screen->dumb && pScreenPriv->card->cfuncs->enableAccel)
         (*pScreenPriv->card->cfuncs->enableAccel) (pScreen);
     KdEnableColormap(pScreen);
     SetRootClip(pScreen, ROOT_CLIP_FULL);
+    if (pScreenPriv->card->cfuncs->dpms)
+        (*pScreenPriv->card->cfuncs->dpms) (pScreen, pScreenPriv->dpmsState);
     return TRUE;
+}
+
+void
+KdResume(void)
+{
+    KdCardInfo *card;
+    KdScreenInfo *screen;
+
+    if (kdEnabled) {
+        KdDoSwitchCmd("resume");
+        for (card = kdCardInfo; card; card = card->next) {
+            if (card->cfuncs->preserve)
+                (*card->cfuncs->preserve) (card);
+            for (screen = card->screenList; screen; screen = screen->next)
+                if (screen->mynum == card->selected && screen->pScreen)
+                    KdEnableScreen(screen->pScreen);
+        }
+        KdEnableInput();
+        KdReleaseAllKeys();
+    }
+}
+
+void
+KdEnableScreens(void)
+{
+    if (!kdEnabled) {
+        kdEnabled = TRUE;
+        if (kdOsFuncs->Enable)
+            (*kdOsFuncs->Enable) ();
+    }
+    KdResume();
+}
+
+void
+KdProcessSwitch(void)
+{
+    if (kdEnabled)
+        KdDisableScreens();
+    else
+        KdEnableScreens();
+}
+
+static void
+AbortDDX(enum ExitCode error)
+{
+    KdDisableScreens();
+    if (kdOsFuncs) {
+        if (kdEnabled && kdOsFuncs->Disable)
+            (*kdOsFuncs->Disable) ();
+        if (kdOsFuncs->Fini)
+            (*kdOsFuncs->Fini) ();
+        KdDoSwitchCmd("stop");
+    }
+
+    if (kdCaughtSignal)
+        OsAbort();
 }
 
 void
 ddxGiveUp(enum ExitCode error)
 {
-    KdDisableScreens();
+    AbortDDX(error);
 }
 
-static Bool kdDumbDriver;
-static Bool kdSoftCursor;
+Bool kdDumbDriver;
+Bool kdSoftCursor;
 
 const char *
 KdParseFindNext(const char *cur, const char *delim, char *save, char *last)
@@ -384,6 +463,7 @@ KdUseMsg(void)
     ErrorF
         ("-origin X,Y      Locates the next screen in the virtual screen (Xinerama)\n");
     ErrorF("-switchCmd       Command to execute on vt switch\n");
+    ErrorF("-zap             Terminate server on Ctrl+Alt+Backspace\n");
     ErrorF
         ("vtxx             Use virtual terminal xx instead of the next available\n");
 }
@@ -416,6 +496,10 @@ KdProcessArgument(int argc, char **argv, int i)
         kdDisableZaphod = TRUE;
         return 1;
     }
+    if (!strcmp(argv[i], "-zap")) {
+        kdAllowZap = TRUE;
+        return 1;
+    }
     if (!strcmp(argv[i], "-3button")) {
         kdEmulateMiddleButton = FALSE;
         return 1;
@@ -434,6 +518,10 @@ KdProcessArgument(int argc, char **argv, int i)
     }
     if (!strcmp(argv[i], "-softCursor")) {
         kdSoftCursor = TRUE;
+        return 1;
+    }
+    if (!strcmp(argv[i], "-videoTest")) {
+        kdVideoTest = TRUE;
         return 1;
     }
     if (!strcmp(argv[i], "-origin")) {
@@ -467,6 +555,10 @@ KdProcessArgument(int argc, char **argv, int i)
         else
             UseMsg();
         return 2;
+    }
+    if (!strncmp(argv[i], "vt", 2) &&
+        sscanf(argv[i], "vt%2d", &kdVirtualTerminal) == 1) {
+        return 1;
     }
     if (!strcmp(argv[i], "-xkb-rules")) {
         if (i + 1 >= argc) {
@@ -531,20 +623,15 @@ KdOsInit(const KdOsFuncs * pOsFuncs)
 {
     kdOsFuncs = pOsFuncs;
     if (pOsFuncs) {
-        if (serverGeneration == 1) {
-            KdDoSwitchCmd("start");
-            if (pOsFuncs->Init)
-                (*pOsFuncs->Init) ();
-        }
+        KdDoSwitchCmd("start");
+        if (pOsFuncs->Init)
+            (*pOsFuncs->Init) ();
     }
 }
 
 Bool KdAllocatePrivates(ScreenPtr pScreen)
 {
     KdPrivScreenPtr pScreenPriv;
-
-    if (kdGeneration != serverGeneration)
-        kdGeneration = serverGeneration;
 
     if (!dixRegisterPrivateKey(&kdScreenPrivateKeyRec, PRIVATE_SCREEN, 0))
         return FALSE;
@@ -584,11 +671,25 @@ Bool KdCloseScreen(ScreenPtr pScreen)
 
     ret = fbCloseScreen(pScreen);
 
+    if (pScreenPriv->dpmsState != KD_DPMS_NORMAL)
+        (*card->cfuncs->dpms) (pScreen, KD_DPMS_NORMAL);
+
     if (screen->mynum == card->selected)
         KdDisableScreen(pScreen);
 
+    /*
+     * Restore video hardware when last screen is closed
+     */
+    if (screen == card->screenList) {
+        if (kdEnabled && card->cfuncs->restore)
+            (*card->cfuncs->restore) (card);
+    }
+
     if (!pScreenPriv->screen->dumb && card->cfuncs->finiAccel)
         (*card->cfuncs->finiAccel) (pScreen);
+
+    if (!pScreenPriv->screen->softCursor && card->cfuncs->finiCursor)
+        (*card->cfuncs->finiCursor) (pScreen);
 
     if (card->cfuncs->scrfini)
         (*card->cfuncs->scrfini) (screen);
@@ -618,7 +719,34 @@ Bool KdCloseScreen(ScreenPtr pScreen)
 
 Bool KdSaveScreen(ScreenPtr pScreen, int on)
 {
-    return FALSE;
+    KdScreenPriv(pScreen);
+    int dpmsState;
+
+    if (!pScreenPriv->card->cfuncs->dpms)
+        return FALSE;
+
+    dpmsState = pScreenPriv->dpmsState;
+    switch (on) {
+    case SCREEN_SAVER_OFF:
+        dpmsState = KD_DPMS_NORMAL;
+        break;
+    case SCREEN_SAVER_ON:
+        if (dpmsState == KD_DPMS_NORMAL)
+            dpmsState = KD_DPMS_NORMAL + 1;
+        break;
+    case SCREEN_SAVER_CYCLE:
+        if (dpmsState < KD_DPMS_MAX)
+            dpmsState++;
+        break;
+    case SCREEN_SAVER_FORCER:
+        break;
+    }
+    if (dpmsState != pScreenPriv->dpmsState) {
+        if (pScreenPriv->enabled)
+            (*pScreenPriv->card->cfuncs->dpms) (pScreen, dpmsState);
+        pScreenPriv->dpmsState = dpmsState;
+    }
+    return TRUE;
 }
 
 static Bool
@@ -823,7 +951,14 @@ Bool KdScreenInit(ScreenPtr pScreen, int argc, char **argv)
     kdEnabled = TRUE;
 
     if (screen->mynum == card->selected) {
+        if (card->cfuncs->preserve)
+            (*card->cfuncs->preserve) (card);
+        if (card->cfuncs->enable)
+            if (!(*card->cfuncs->enable) (pScreen))
+                return FALSE;
         pScreenPriv->enabled = TRUE;
+        if (!screen->softCursor && card->cfuncs->enableCursor)
+            (*card->cfuncs->enableCursor) (pScreen);
         KdEnableColormap(pScreen);
         if (!screen->dumb && card->cfuncs->enableAccel)
             (*card->cfuncs->enableAccel) (pScreen);
@@ -832,8 +967,7 @@ Bool KdScreenInit(ScreenPtr pScreen, int argc, char **argv)
     return TRUE;
 }
 
-void KdInitScreen(ScreenInfo * pScreenInfo,
-                  KdScreenInfo * screen, int argc, char **argv)
+void KdInitScreen(KdScreenInfo * screen, int argc, char **argv)
 {
     KdCardInfo *card = screen->card;
 
@@ -846,8 +980,7 @@ void KdInitScreen(ScreenInfo * pScreenInfo,
         screen->softCursor = TRUE;
 }
 
-static Bool
-KdSetPixmapFormats(ScreenInfo * pScreenInfo)
+static Bool KdSetPixmapFormats(void)
 {
     CARD8 depthToBpp[33];       /* depth -> bpp map */
     KdCardInfo *card;
@@ -884,16 +1017,15 @@ KdSetPixmapFormats(ScreenInfo * pScreenInfo)
         if (!depthToBpp[kdDepths[i].depth])
             depthToBpp[kdDepths[i].depth] = kdDepths[i].bpp;
 
-    pScreenInfo->imageByteOrder = IMAGE_BYTE_ORDER;
-    pScreenInfo->bitmapScanlineUnit = BITMAP_SCANLINE_UNIT;
-    pScreenInfo->bitmapScanlinePad = BITMAP_SCANLINE_PAD;
-    pScreenInfo->bitmapBitOrder = BITMAP_BIT_ORDER;
-
-    pScreenInfo->numPixmapFormats = 0;
+    screenInfo.imageByteOrder = IMAGE_BYTE_ORDER;
+    screenInfo.bitmapScanlineUnit = BITMAP_SCANLINE_UNIT;
+    screenInfo.bitmapScanlinePad = BITMAP_SCANLINE_PAD;
+    screenInfo.bitmapBitOrder = BITMAP_BIT_ORDER;
+    screenInfo.numPixmapFormats = 0;
 
     for (i = 1; i <= 32; i++) {
         if (depthToBpp[i]) {
-            format = &pScreenInfo->formats[pScreenInfo->numPixmapFormats++];
+            format = &screenInfo.formats[screenInfo.numPixmapFormats++];
             format->depth = i;
             format->bitsPerPixel = depthToBpp[i];
             format->scanlinePad = BITMAP_SCANLINE_PAD;
@@ -903,28 +1035,26 @@ KdSetPixmapFormats(ScreenInfo * pScreenInfo)
     return TRUE;
 }
 
-static void
-KdAddScreen(ScreenInfo * pScreenInfo,
-            KdScreenInfo * screen, int argc, char **argv)
+static void KdAddScreen(KdScreenInfo * screen, int argc, char **argv)
 {
     int i;
 
     /*
      * Fill in fb visual type masks for this screen
      */
-    for (i = 0; i < pScreenInfo->numPixmapFormats; i++) {
+    for (i = 0; i < screenInfo.numPixmapFormats; i++) {
         unsigned long visuals;
         Pixel rm, gm, bm;
 
         visuals = 0;
         rm = gm = bm = 0;
-        if (pScreenInfo->formats[i].depth == screen->fb.depth) {
+        if (screenInfo.formats[i].depth == screen->fb.depth) {
             visuals = screen->fb.visuals;
             rm = screen->fb.redMask;
             gm = screen->fb.greenMask;
             bm = screen->fb.blueMask;
         }
-        fbSetVisualTypesAndMasks(pScreenInfo->formats[i].depth,
+        fbSetVisualTypesAndMasks(screenInfo.formats[i].depth,
                                  visuals, 8, rm, gm, bm);
     }
 
@@ -933,8 +1063,29 @@ KdAddScreen(ScreenInfo * pScreenInfo,
     AddScreen(KdScreenInit, argc, argv);
 }
 
+#if 0                           /* This function is not used currently */
+
+int
+KdDepthToFb(ScreenPtr pScreen, int depth)
+{
+    KdScreenPriv(pScreen);
+
+    for (fb = 0; fb <= KD_MAX_FB && pScreenPriv->screen->fb.frameBuffer; fb++)
+        if (pScreenPriv->screen->fb.depth == depth)
+            return fb;
+}
+
+#endif
+
+static int
+KdSignalWrapper(int signum)
+{
+    kdCaughtSignal = TRUE;
+    return 1;                   /* use generic OS layer cleanup & abort */
+}
+
 void
-KdInitOutput(ScreenInfo * pScreenInfo, int argc, char **argv)
+KdInitOutput(int argc, char **argv)
 {
     KdCardInfo *card;
     KdScreenInfo *screen;
@@ -956,7 +1107,7 @@ KdInitOutput(ScreenInfo * pScreenInfo, int argc, char **argv)
             ret = (*card->cfuncs->cardinit) (card);
         if (ret) {
             for (screen = card->screenList; screen; screen = screen->next)
-                KdInitScreen(pScreenInfo, screen, argc, argv);
+                KdInitScreen(screen, argc, argv);
         }
     }
 
@@ -964,7 +1115,7 @@ KdInitOutput(ScreenInfo * pScreenInfo, int argc, char **argv)
      * Merge the various pixmap formats together, this can fail
      * when two screens share depth but not bitsPerPixel
      */
-    if (!KdSetPixmapFormats(pScreenInfo))
+    if (!KdSetPixmapFormats())
         return;
 
     /*
@@ -972,8 +1123,9 @@ KdInitOutput(ScreenInfo * pScreenInfo, int argc, char **argv)
      */
     for (card = kdCardInfo; card; card = card->next)
         for (screen = card->screenList; screen; screen = screen->next)
-            KdAddScreen(pScreenInfo, screen, argc, argv);
+            KdAddScreen(screen, argc, argv);
 
+    OsRegisterSigWrapper(KdSignalWrapper);
     xorgGlxCreateVendor();
 
 #if defined(CONFIG_UDEV) || defined(CONFIG_HAL)
@@ -1003,7 +1155,7 @@ DeleteGPUDeviceRequest(struct OdevAttributes *attribs)
 
 #if defined(CONFIG_UDEV) || defined(CONFIG_HAL)
 struct xf86_platform_device *
-xf86_find_platform_device_by_devnum(int major, int minor)
+xf86_find_platform_device_by_devnum(unsigned int major, unsigned int minor)
 {
     return NULL;
 }

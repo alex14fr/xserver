@@ -28,11 +28,7 @@
 
 #include <X11/extensions/XI2proto.h>
 
-int SProcXIQueryDevice(ClientPtr client);
-int ProcXIQueryDevice(ClientPtr client);
 int SizeDeviceClasses(DeviceIntPtr dev);
-int ListDeviceClasses(ClientPtr client, DeviceIntPtr dev,
-                      char *any, uint16_t * nclasses);
 int GetDeviceUse(DeviceIntPtr dev, uint16_t * attachment);
 int ListButtonInfo(DeviceIntPtr dev, xXIButtonInfo * info, Bool reportState);
 int ListKeyInfo(DeviceIntPtr dev, xXIKeyInfo * info);

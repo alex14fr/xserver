@@ -1929,7 +1929,6 @@ x86emuOp2_movzx_word_R_RM(u8 X86EMU_UNUSED(op2))
         DECODE_PRINTF("\n");
         TRACE_AND_STEP();
         assert(destreg);
-        assert(srcreg);
         *destreg = srcval;
         break;
     case 3:                    /* register to register */
@@ -2478,6 +2477,7 @@ x86emuOp2_bsf(u8 X86EMU_UNUSED(op2))
         }
         else {
             u16 *dec = DECODE_RM_WORD_REGISTER(rl);
+            (void)dec;
             assert(dec);
             u16 srcval = *DECODE_RM_WORD_REGISTER(rl);
             DECODE_PRINTF(",");

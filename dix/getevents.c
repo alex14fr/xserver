@@ -42,6 +42,8 @@
 
 #include "dix/input_priv.h"
 #include "dix/inpututils_priv.h"
+#include "dix/screenint_priv.h"
+#include "include/extinit.h"
 #include "mi/mi_priv.h"
 #include "os/bug_priv.h"
 #include "os/probes_priv.h"
@@ -61,9 +63,7 @@
 #include "windowstr.h"
 #include "xkbsrv.h"
 #include "exglobals.h"
-#include "exevents.h"
 #include "extnsionst.h"
-#include "listdev.h"            /* for sizing up DeviceClassesChangedEvent */
 
 /* Number of motion history events to store. */
 #define MOTION_HISTORY_SIZE 256
@@ -2120,8 +2120,9 @@ PostSyntheticMotion(DeviceIntPtr pDev,
        will translate from sprite screen to screen 0 upon reentry
        to the DIX layer. */
     if (!noPanoramiXExtension) {
-        x += screenInfo.screens[0]->x - screenInfo.screens[screen]->x;
-        y += screenInfo.screens[0]->y - screenInfo.screens[screen]->y;
+        ScreenPtr masterScreen = dixGetMasterScreen();
+        x += masterScreen->x - screenInfo.screens[screen]->x;
+        y += masterScreen->y - screenInfo.screens[screen]->y;
     }
 #endif /* XINERAMA */
 

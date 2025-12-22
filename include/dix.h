@@ -90,14 +90,6 @@ SOFTWARE.
             return(BadLength);                                          \
     } while (0)
 
-#define WriteSwappedDataToClient(pClient, size, pbuf)                   \
-    do {                                                                \
-        if ((pClient)->swapped)                                         \
-            (*(pClient)->pSwapReplyFunc)(pClient, (int)(size), pbuf);   \
-        else                                                            \
-            WriteToClient(pClient, (int)(size), (pbuf));                \
-    } while (0)
-
 typedef struct _TimeStamp *TimeStampPtr;
 
 #ifndef _XTYPEDEF_CLIENTPTR
@@ -106,9 +98,7 @@ typedef struct _Client *ClientPtr;
 #define _XTYPEDEF_CLIENTPTR
 #endif
 
-typedef struct _WorkQueue *WorkQueuePtr;
-
-extern _X_EXPORT ClientPtr clients[MAXCLIENTS];
+extern _X_EXPORT ClientPtr clients[];
 extern _X_EXPORT ClientPtr serverClient;
 extern _X_EXPORT int currentMaxClients;
 

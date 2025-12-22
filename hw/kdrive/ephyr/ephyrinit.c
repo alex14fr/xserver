@@ -23,7 +23,7 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <dix-config.h>
+#include <kdrive-config.h>
 
 #include "dix/dix_priv.h"
 #include "os/cmdline.h"
@@ -63,9 +63,9 @@ InitCard(char *name)
 }
 
 void
-InitOutput(ScreenInfo * pScreenInfo, int argc, char **argv)
+InitOutput(int argc, char **argv)
 {
-    KdInitOutput(pScreenInfo, argc, argv);
+    KdInitOutput(argc, argv);
 }
 
 void

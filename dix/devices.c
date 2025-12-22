@@ -55,12 +55,15 @@ SOFTWARE.
 #include <X11/extensions/XI2.h>
 #include <X11/extensions/XIproto.h>
 
+#include "dix/devices_priv.h"
 #include "dix/dix_priv.h"
 #include "dix/dixgrabs_priv.h"
 #include "dix/exevents_priv.h"
 #include "dix/input_priv.h"
 #include "dix/ptrveloc_priv.h"
+#include "dix/request_priv.h"
 #include "dix/resource_priv.h"
+#include "dix/screenint_priv.h"
 #include "mi/mi_priv.h"
 #include "os/bug_priv.h"
 #include "os/log_priv.h"
@@ -76,7 +79,6 @@ SOFTWARE.
 #include "dixstruct.h"
 #include "ptrveloc.h"
 #include "privates.h"
-#include "xace.h"
 #include "dispatch.h"
 #include "swaprep.h"
 #include "mipointer.h"
@@ -92,6 +94,8 @@ SOFTWARE.
 /** @file
  * This file handles input device-related stuff.
  */
+
+CallbackListPtr DeviceAccessCallback = NULL;
 
 static void RecalculateMasterButtons(DeviceIntPtr slave);
 
@@ -296,7 +300,7 @@ AddInputDevice(ClientPtr client, DeviceProc deviceProc, Bool autoStart)
 
     /*  security creation/labeling check
      */
-    if (XaceHookDeviceAccess(client, dev, DixCreateAccess)) {
+    if (dixCallDeviceAccessCallback(client, dev, DixCreateAccess)) {
         dixFreePrivates(dev->devPrivates, PRIVATE_DEVICE);
         free(dev);
         return NULL;
@@ -378,9 +382,10 @@ EnableDevice(DeviceIntPtr dev, BOOL sendevent)
         if (InputDevIsMaster(dev)) {
             /* Sprites appear on first root window, so we can hardcode it */
             if (dev->spriteInfo->spriteOwner) {
-                InitializeSprite(dev, screenInfo.screens[0]->root);
+                ScreenPtr masterScreen = dixGetMasterScreen();
+                InitializeSprite(dev, masterScreen->root);
                 /* mode doesn't matter */
-                EnterWindow(dev, screenInfo.screens[0]->root, NotifyAncestor);
+                EnterWindow(dev, masterScreen->root, NotifyAncestor);
             }
             else {
                 other = NextFreePointerDevice();
@@ -589,7 +594,7 @@ int
 ActivateDevice(DeviceIntPtr dev, BOOL sendevent)
 {
     int ret = Success;
-    ScreenPtr pScreen = screenInfo.screens[0];
+    ScreenPtr masterScreen = dixGetMasterScreen();
 
     if (!dev || !dev->deviceProc)
         return BadImplementation;
@@ -603,7 +608,7 @@ ActivateDevice(DeviceIntPtr dev, BOOL sendevent)
 
     /* Initialize memory for sprites. */
     if (InputDevIsMaster(dev) && dev->spriteInfo->spriteOwner)
-        if (!pScreen->DeviceCursorInitialize(dev, pScreen))
+        if (!masterScreen->DeviceCursorInitialize(dev, masterScreen))
             ret = BadAlloc;
 
     SendDevicePresenceEvent(dev->id, DeviceAdded);
@@ -672,7 +677,7 @@ CorePointerProc(DeviceIntPtr pDev, int what)
     BYTE map[NBUTTONS + 1];
     Atom btn_labels[NBUTTONS] = { 0 };
     Atom axes_labels[NAXES] = { 0 };
-    ScreenPtr scr = screenInfo.screens[0];
+    ScreenPtr masterScreen = dixGetMasterScreen();
 
     switch (what) {
     case DEVICE_INIT:
@@ -700,10 +705,10 @@ CorePointerProc(DeviceIntPtr pDev, int what)
             return BadAlloc;    /* IPDS only fails on allocs */
         }
         /* axisVal is per-screen, last.valuators is desktop-wide */
-        pDev->valuator->axisVal[0] = scr->width / 2;
-        pDev->last.valuators[0] = pDev->valuator->axisVal[0] + scr->x;
-        pDev->valuator->axisVal[1] = scr->height / 2;
-        pDev->last.valuators[1] = pDev->valuator->axisVal[1] + scr->y;
+        pDev->valuator->axisVal[0] = masterScreen->width / 2;
+        pDev->last.valuators[0] = pDev->valuator->axisVal[0] + masterScreen->x;
+        pDev->valuator->axisVal[1] = masterScreen->height / 2;
+        pDev->last.valuators[1] = pDev->valuator->axisVal[1] + masterScreen->y;
         break;
 
     case DEVICE_CLOSE:
@@ -987,7 +992,7 @@ FreePendingFrozenDeviceEvents(DeviceIntPtr dev)
 static void
 CloseDevice(DeviceIntPtr dev)
 {
-    ScreenPtr screen = screenInfo.screens[0];
+    ScreenPtr masterScreen = dixGetMasterScreen();
     ClassesPtr classes;
 
     if (!dev)
@@ -1001,7 +1006,7 @@ CloseDevice(DeviceIntPtr dev)
     FreeSprite(dev);
 
     if (InputDevIsMaster(dev))
-        screen->DeviceCursorCleanup(dev, screen);
+        masterScreen->DeviceCursorCleanup(dev, masterScreen);
 
     /* free acceleration info */
     if (dev->valuator && dev->valuator->accelScheme.AccelCleanupProc)
@@ -1142,10 +1147,10 @@ AbortDevices(void)
 void
 UndisplayDevices(void)
 {
-    ScreenPtr screen = screenInfo.screens[0];
+    ScreenPtr masterScreen = dixGetMasterScreen();
 
     for (DeviceIntPtr dev = inputInfo.devices; dev; dev = dev->next)
-        screen->DisplayCursor(dev, screen, NullCursor);
+        masterScreen->DisplayCursor(dev, masterScreen, NullCursor);
 }
 
 static int
@@ -1184,7 +1189,7 @@ int
 RemoveDevice(DeviceIntPtr dev, BOOL sendevent)
 {
     int ret = BadMatch;
-    ScreenPtr screen = screenInfo.screens[0];
+    ScreenPtr masterScreen = dixGetMasterScreen();
     int deviceid;
     int initialized;
     int flags[MAXDEVICES] = { 0 };
@@ -1200,7 +1205,7 @@ RemoveDevice(DeviceIntPtr dev, BOOL sendevent)
 
     if (initialized) {
         if (DevHasCursor(dev))
-            screen->DisplayCursor(dev, screen, NullCursor);
+            masterScreen->DisplayCursor(dev, masterScreen, NullCursor);
 
         DisableDevice(dev, sendevent);
         flags[dev->id] = XIDeviceDisabled;
@@ -1253,7 +1258,7 @@ dixLookupDevice(DeviceIntPtr *pDev, int id, ClientPtr client, Mask access_mode)
     return BadDevice;
 
  found:
-    rc = XaceHookDeviceAccess(client, dev, access_mode);
+    rc = dixCallDeviceAccessCallback(client, dev, access_mode);
     if (rc == Success)
         *pDev = dev;
     return rc;
@@ -1741,18 +1746,11 @@ ProcSetModifierMapping(ClientPtr client)
     if (rc != MappingSuccess && rc != MappingFailed && rc != MappingBusy)
         return rc;
 
-    xSetModifierMappingReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = 0,
+    xSetModifierMappingReply reply = {
         .success = rc,
     };
 
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-    }
-    WriteToClient(client, sizeof(rep), &rep);
-    return Success;
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 int
@@ -1766,25 +1764,16 @@ ProcGetModifierMapping(ClientPtr client)
     generate_modkeymap(client, PickKeyboard(client), &modkeymap,
                        &max_keys_per_mod);
 
-    xGetModifierMappingReply rep = {
-        .type = X_Reply,
-        .numKeyPerModifier = max_keys_per_mod,
-        .sequenceNumber = client->sequence,
-        /* length counts 4 byte quantities - there are 8 modifiers 1 byte big */
-        .length = max_keys_per_mod << 1
-    };
-
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-    }
-
-    WriteToClient(client, sizeof(rep), &rep);
-    WriteToClient(client, max_keys_per_mod * 8, modkeymap);
+    x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
+    x_rpcbuf_write_binary_pad(&rpcbuf, modkeymap, max_keys_per_mod * 8);
 
     free(modkeymap);
 
-    return Success;
+    xGetModifierMappingReply reply = {
+        .numKeyPerModifier = max_keys_per_mod,
+    };
+
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 int
@@ -1822,7 +1811,7 @@ ProcChangeKeyboardMapping(ClientPtr client)
     keysyms.mapWidth = stuff->keySymsPerKeyCode;
     keysyms.map = (KeySym *) &stuff[1];
 
-    rc = XaceHookDeviceAccess(client, pDev, DixManageAccess);
+    rc = dixCallDeviceAccessCallback(client, pDev, DixManageAccess);
     if (rc != Success)
         return rc;
 
@@ -1835,7 +1824,7 @@ ProcChangeKeyboardMapping(ClientPtr client)
         if (!tmp->key)
             continue;
 
-        rc = XaceHookDeviceAccess(client, pDev, DixManageAccess);
+        rc = dixCallDeviceAccessCallback(client, pDev, DixManageAccess);
         if (rc != Success)
             continue;
 
@@ -1891,18 +1880,11 @@ ProcSetPointerMapping(ClientPtr client)
     if (ret != Success && ret != MappingBusy)
         return ret;
 
-    xSetPointerMappingReply rep = {
-        .type = X_Reply,
+    xSetPointerMappingReply reply = {
         .success = (ret == MappingBusy) ? MappingBusy : MappingSuccess,
-        .sequenceNumber = client->sequence,
     };
 
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-    }
-
-    WriteToClient(client, sizeof(rep), &rep);
-    return Success;
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 int
@@ -1916,7 +1898,7 @@ ProcGetKeyboardMapping(ClientPtr client)
     REQUEST(xGetKeyboardMappingReq);
     REQUEST_SIZE_MATCH(xGetKeyboardMappingReq);
 
-    rc = XaceHookDeviceAccess(client, kbd, DixGetAttrAccess);
+    rc = dixCallDeviceAccessCallback(client, kbd, DixGetAttrAccess);
     if (rc != Success)
         return rc;
 
@@ -1938,12 +1920,8 @@ ProcGetKeyboardMapping(ClientPtr client)
 
     const int count = syms->mapWidth * stuff->count;
 
-    xGetKeyboardMappingReply rep = {
-        .type = X_Reply,
+    xGetKeyboardMappingReply reply = {
         .keySymsPerKeyCode = syms->mapWidth,
-        .sequenceNumber = client->sequence,
-        /* length is a count of 4 byte quantities and KeySyms are 4 bytes */
-        .length = count
     };
 
     x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
@@ -1955,17 +1933,7 @@ ProcGetKeyboardMapping(ClientPtr client)
     free(syms->map);
     free(syms);
 
-    if (rpcbuf.error)
-        return BadAlloc;
-
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-    }
-
-    WriteToClient(client, sizeof(rep), &rep);
-    WriteRpcbufToClient(client, &rpcbuf);
-    return Success;
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 int
@@ -1981,27 +1949,20 @@ ProcGetPointerMapping(ClientPtr client)
 
     REQUEST_SIZE_MATCH(xReq);
 
-    rc = XaceHookDeviceAccess(client, ptr, DixGetAttrAccess);
+    rc = dixCallDeviceAccessCallback(client, ptr, DixGetAttrAccess);
     if (rc != Success)
         return rc;
 
     nElts = (butc) ? butc->numButtons : 0;
 
-    xGetPointerMappingReply rep = {
-        .type = X_Reply,
+    x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
+    x_rpcbuf_write_binary_pad(&rpcbuf, &butc->map[1], nElts);
+
+    xGetPointerMappingReply reply = {
         .nElts = nElts,
-        .sequenceNumber = client->sequence,
-        .length = ((unsigned) nElts + (4 - 1)) / 4
     };
 
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-    }
-
-    WriteToClient(client, sizeof(rep), &rep);
-    WriteToClient(client, nElts, &butc->map[1]);
-    return Success;
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 void
@@ -2203,7 +2164,7 @@ ProcChangeKeyboardControl(ClientPtr client)
         if ((pDev == keyboard ||
              (!InputDevIsMaster(pDev) && GetMaster(pDev, MASTER_KEYBOARD) == keyboard))
             && pDev->kbdfeed && pDev->kbdfeed->CtrlProc) {
-            ret = XaceHookDeviceAccess(client, pDev, DixManageAccess);
+            ret = dixCallDeviceAccessCallback(client, pDev, DixManageAccess);
             if (ret != Success)
                 return ret;
         }
@@ -2230,15 +2191,12 @@ ProcGetKeyboardControl(ClientPtr client)
 
     REQUEST_SIZE_MATCH(xReq);
 
-    int rc = XaceHookDeviceAccess(client, kbd, DixGetAttrAccess);
+    int rc = dixCallDeviceAccessCallback(client, kbd, DixGetAttrAccess);
     if (rc != Success)
         return rc;
 
-    xGetKeyboardControlReply rep = {
-        .type = X_Reply,
+    xGetKeyboardControlReply reply = {
         .globalAutoRepeat = ctrl->autoRepeat,
-        .sequenceNumber = client->sequence,
-        .length = 5,
         .ledMask = ctrl->leds,
         .keyClickPercent = ctrl->click,
         .bellPercent = ctrl->bell,
@@ -2246,17 +2204,15 @@ ProcGetKeyboardControl(ClientPtr client)
         .bellDuration = ctrl->bell_duration
     };
     for (int i = 0; i < 32; i++)
-        rep.map[i] = ctrl->autoRepeats[i];
+        reply.map[i] = ctrl->autoRepeats[i];
 
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-        swapl(&rep.ledMask);
-        swaps(&rep.bellPitch);
-        swaps(&rep.bellDuration);
+        swapl(&reply.ledMask);
+        swaps(&reply.bellPitch);
+        swaps(&reply.bellDuration);
     }
-    WriteToClient(client, sizeof(rep), &rep);
-    return Success;
+
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 int
@@ -2286,7 +2242,7 @@ ProcBell(ClientPtr client)
              (!InputDevIsMaster(dev) && GetMaster(dev, MASTER_KEYBOARD) == keybd)) &&
             ((dev->kbdfeed && dev->kbdfeed->BellProc) || dev->xkb_interest)) {
 
-            rc = XaceHookDeviceAccess(client, dev, DixBellAccess);
+            rc = dixCallDeviceAccessCallback(client, dev, DixBellAccess);
             if (rc != Success)
                 return rc;
             XkbHandleBell(FALSE, FALSE, dev, newpercent,
@@ -2359,7 +2315,7 @@ ProcChangePointerControl(ClientPtr client)
         if ((dev == mouse ||
              (!InputDevIsMaster(dev) && GetMaster(dev, MASTER_POINTER) == mouse)) &&
             dev->ptrfeed) {
-            rc = XaceHookDeviceAccess(client, dev, DixManageAccess);
+            rc = dixCallDeviceAccessCallback(client, dev, DixManageAccess);
             if (rc != Success)
                 return rc;
         }
@@ -2390,27 +2346,23 @@ ProcGetPointerControl(ClientPtr client)
 
     REQUEST_SIZE_MATCH(xReq);
 
-    rc = XaceHookDeviceAccess(client, ptr, DixGetAttrAccess);
+    rc = dixCallDeviceAccessCallback(client, ptr, DixGetAttrAccess);
     if (rc != Success)
         return rc;
 
-    xGetPointerControlReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = 0,
+    xGetPointerControlReply reply = {
         .accelNumerator = ctrl->num,
         .accelDenominator = ctrl->den,
         .threshold = ctrl->threshold
     };
 
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swaps(&rep.accelNumerator);
-        swaps(&rep.accelDenominator);
-        swaps(&rep.threshold);
+        swaps(&reply.accelNumerator);
+        swaps(&reply.accelDenominator);
+        swaps(&reply.threshold);
     }
-    WriteToClient(client, sizeof(rep), &rep);
-    return Success;
+
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 void
@@ -2433,7 +2385,6 @@ int
 ProcGetMotionEvents(ClientPtr client)
 {
     WindowPtr pWin;
-    xTimecoord *coords = (xTimecoord *) NULL;
     int count, xmin, xmax, ymin, ymax, rc;
     unsigned long nEvents;
     DeviceIntPtr mouse = PickPointer(client);
@@ -2445,13 +2396,15 @@ ProcGetMotionEvents(ClientPtr client)
     rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
     if (rc != Success)
         return rc;
-    rc = XaceHookDeviceAccess(client, mouse, DixReadAccess);
+    rc = dixCallDeviceAccessCallback(client, mouse, DixReadAccess);
     if (rc != Success)
         return rc;
 
     UpdateCurrentTimeIf();
     if (mouse->valuator->motionHintWindow)
         MaybeStopHint(mouse, client);
+
+    x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
 
     nEvents = 0;
     start = ClientTimeToServerTime(stuff->start);
@@ -2461,6 +2414,9 @@ ProcGetMotionEvents(ClientPtr client)
         mouse->valuator->numMotionEvents) {
         if (CompareTimeStamps(stop, currentTime) == LATER)
             stop = currentTime;
+
+        xTimecoord *coords = NULL;
+
         count = GetMotionHistory(mouse, &coords, start.milliseconds,
                                  stop.milliseconds, pWin->drawable.pScreen,
                                  TRUE);
@@ -2473,35 +2429,26 @@ ProcGetMotionEvents(ClientPtr client)
         for (int i = 0; i < count; i++)
             if ((xmin <= coords[i].x) && (coords[i].x < xmax) &&
                 (ymin <= coords[i].y) && (coords[i].y < ymax)) {
-                coords[nEvents].time = coords[i].time;
-                coords[nEvents].x = coords[i].x - pWin->drawable.x;
-                coords[nEvents].y = coords[i].y - pWin->drawable.y;
                 nEvents++;
+
+                /* write xTimecoord */
+                x_rpcbuf_write_CARD32(&rpcbuf, coords[i].time);
+                x_rpcbuf_write_INT16(&rpcbuf, coords[i].x - pWin->drawable.x);
+                x_rpcbuf_write_INT16(&rpcbuf, coords[i].y - pWin->drawable.y);
             }
+
+        free(coords);
     }
 
-    xGetMotionEventsReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = nEvents * bytes_to_int32(sizeof(xTimecoord)),
+    xGetMotionEventsReply reply = {
         .nEvents = nEvents,
     };
 
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-        swapl(&rep.nEvents);
-        for (int i = 0; i < nEvents; i++) {
-            swapl(&coords[i].time);
-            swaps(&coords[i].x);
-            swaps(&coords[i].y);
-        }
+        swapl(&reply.nEvents);
     }
 
-    WriteToClient(client, sizeof(xGetMotionEventsReply), &rep);
-    WriteToClient(client, nEvents * sizeof(xTimecoord), coords);
-    free(coords);
-    return Success;
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 int
@@ -2513,30 +2460,20 @@ ProcQueryKeymap(ClientPtr client)
 
     REQUEST_SIZE_MATCH(xReq);
 
-    xQueryKeymapReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = 2
-    };
+    xQueryKeymapReply reply = { 0 };
 
-    rc = XaceHookDeviceAccess(client, keybd, DixReadAccess);
+    rc = dixCallDeviceAccessCallback(client, keybd, DixReadAccess);
     /* If rc is Success, we're allowed to copy out the keymap.
      * If it's BadAccess, we leave it empty & lie to the client.
      */
     if (rc == Success) {
         for (int i = 0; i < 32; i++)
-            rep.map[i] = down[i];
+            reply.map[i] = down[i];
     }
     else if (rc != BadAccess)
         return rc;
 
-    if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-    }
-    WriteToClient(client, sizeof(rep), &rep);
-
-    return Success;
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 /**
@@ -2697,7 +2634,7 @@ AttachDevice(ClientPtr client, DeviceIntPtr dev, DeviceIntPtr master)
         if (dev->spriteInfo->sprite)
             currentRoot = InputDevCurrentRootWindow(dev);
         else                    /* new device auto-set to floating */
-            currentRoot = screenInfo.screens[0]->root;
+            currentRoot = dixGetMasterScreen()->root;
 
         /* we need to init a fake sprite */
         screen = currentRoot->drawable.pScreen;

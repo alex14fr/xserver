@@ -38,6 +38,7 @@
 #include <X11/extensions/Xvproto.h>
 
 #include "dix/screen_hooks_priv.h"
+#include "include/extinit.h"
 #include "Xext/xvdix_priv.h"
 
 #include "misc.h"
@@ -109,15 +110,13 @@ static DevPrivateKeyRec XF86XVWindowKeyRec;
 
 #define XF86XVWindowKey (&XF86XVWindowKeyRec)
 
-/* dixmain.c XvScreenPtr screen private */
-DevPrivateKey XF86XvScreenKey;
 /** xf86xv.c XF86XVScreenPtr screen private */
 static DevPrivateKeyRec XF86XVScreenPrivateKey;
 
 static unsigned long PortResource = 0;
 
 #define GET_XV_SCREEN(pScreen) \
-    ((XvScreenPtr)dixLookupPrivate(&(pScreen)->devPrivates, XF86XvScreenKey))
+    ((XvScreenPtr)dixLookupPrivate(&(pScreen)->devPrivates, XvGetScreenKey()))
 
 #define GET_XF86XV_SCREEN(pScreen) \
     ((XF86XVScreenPtr)(dixGetPrivate(&pScreen->devPrivates, &XF86XVScreenPrivateKey)))
@@ -243,8 +242,6 @@ xf86XVScreenInit(ScreenPtr pScreen, XF86VideoAdaptorPtr * adaptors, int num)
     if (!dixRegisterPrivateKey(&XF86XVScreenPrivateKey, PRIVATE_SCREEN, 0))
         return FALSE;
 
-    XF86XvScreenKey = XvGetScreenKey();
-
     PortResource = XvGetRTPort();
 
     ScreenPriv = calloc(1, sizeof(XF86XVScreenRec));
@@ -255,6 +252,7 @@ xf86XVScreenInit(ScreenPtr pScreen, XF86VideoAdaptorPtr * adaptors, int num)
 
     pScrn = xf86ScreenToScrn(pScreen);
 
+    dixScreenHookWindowDestroy(pScreen, xf86XVWindowDestroy);
     dixScreenHookClose(pScreen, xf86XVCloseScreen);
 
     ScreenPriv->WindowExposures = pScreen->WindowExposures;

@@ -23,7 +23,7 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <dix-config.h>
+#include <kdrive-config.h>
 
 #include <xcb/xcb_keysyms.h>
 #include <X11/keysym.h>
@@ -32,6 +32,7 @@
 #include "mi/mipointer_priv.h"
 #include "os/client_priv.h"
 #include "os/osdep.h"
+#include "os/serverlock.h"
 
 #include "ephyr.h"
 #include "inputstr.h"
@@ -667,6 +668,7 @@ ephyrSetGrabShortcut(char const* const desc)
     }
     else {
         const uint8_t fixed_bound = 255;
+        (void)fixed_bound;
         char buf[16];
         uint8_t j = 0;
         for (uint8_t i = 0;; ++i) {
@@ -955,10 +957,7 @@ miPointerScreenFuncRec ephyrPointerScreenFuncs = {
 static KdScreenInfo *
 screen_from_window(Window w)
 {
-    int i = 0;
-
-    for (i = 0; i < screenInfo.numScreens; i++) {
-        ScreenPtr walkScreen = screenInfo.screens[i];
+    DIX_FOR_EACH_SCREEN({
         KdPrivScreenPtr kdscrpriv = KdGetScreenPriv(walkScreen);
         KdScreenInfo *screen = kdscrpriv->screen;
         EphyrScrPriv *scrpriv = screen->driver;
@@ -968,10 +967,13 @@ screen_from_window(Window w)
             || scrpriv->win_pre_existing == w) {
             return screen;
         }
-    }
+    });
 
     return NULL;
 }
+
+static void
+ephyrProcessErrorEvent(xcb_generic_event_t *xev) _X_NORETURN;
 
 static void
 ephyrProcessErrorEvent(xcb_generic_event_t *xev)
@@ -1255,7 +1257,7 @@ ephyrXcbProcessEvents(Bool queued_only)
              */
             if (xcb_connection_has_error(conn)) {
                 CloseWellKnownConnections();
-                OsCleanup(1);
+                UnlockServer();
                 exit(1);
             }
 

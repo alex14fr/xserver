@@ -43,6 +43,9 @@
 #include <errno.h>
 
 #ifdef CONFIG_MITSHM
+# if defined(__CYGWIN__)
+#  include <sys/param.h>
+# endif
 #include <sys/sysmacros.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -55,10 +58,14 @@
 #include <X11/fonts/fontstruct.h>
 #include <X11/fonts/libxfont2.h>
 
+#include "dix/dix_priv.h"
+#include "dix/request_priv.h"
 #include "miext/extinit_priv.h"
+#include "os/osdep.h"
 
 #include "misc.h"
 #include "os.h"
+#include "os/osdep.h"
 #include "dixstruct.h"
 #include "gcstruct.h"
 #include "dixfontstr.h"
@@ -85,7 +92,7 @@ static unsigned int pagesize;
 
 static Bool badSysCall = FALSE;
 
-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__CYGWIN__) || defined(__DragonFly__)
 
 static void
 SigSysHandler(int signo)
@@ -263,8 +270,6 @@ ProcXF86BigfontQueryVersion(ClientPtr client)
     REQUEST_SIZE_MATCH(xXF86BigfontQueryVersionReq);
 
     xXF86BigfontQueryVersionReply reply = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
         .majorVersion = SERVER_XF86BIGFONT_MAJOR_VERSION,
         .minorVersion = SERVER_XF86BIGFONT_MINOR_VERSION,
         .uid = geteuid(),
@@ -276,16 +281,13 @@ ProcXF86BigfontQueryVersion(ClientPtr client)
 #endif /* CONFIG_MITSHM */
     };
     if (client->swapped) {
-        swaps(&reply.sequenceNumber);
-        swapl(&reply.length);
         swaps(&reply.majorVersion);
         swaps(&reply.minorVersion);
         swapl(&reply.uid);
         swapl(&reply.gid);
         swapl(&reply.signature);
     }
-    WriteToClient(client, sizeof(xXF86BigfontQueryVersionReply), &reply);
-    return Success;
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 static void
@@ -299,6 +301,15 @@ swapCharInfo(xCharInfo * pCI)
     swaps(&pCI->attributes);
 }
 
+static inline void writeCharInfo(x_rpcbuf_t *rpcbuf, xCharInfo CI) {
+    x_rpcbuf_write_INT16(rpcbuf, CI.leftSideBearing);
+    x_rpcbuf_write_INT16(rpcbuf, CI.rightSideBearing);
+    x_rpcbuf_write_INT16(rpcbuf, CI.characterWidth);
+    x_rpcbuf_write_INT16(rpcbuf, CI.ascent);
+    x_rpcbuf_write_INT16(rpcbuf, CI.descent);
+    x_rpcbuf_write_CARD16(rpcbuf, CI.attributes);
+}
+
 /* static CARD32 hashCI (xCharInfo *p); */
 #define hashCI(p) \
 	(CARD32)(((p->leftSideBearing << 27) + (p->leftSideBearing >> 5) + \
@@ -309,9 +320,14 @@ swapCharInfo(xCharInfo * pCI)
 static int
 ProcXF86BigfontQueryFont(ClientPtr client)
 {
+    REQUEST(xXF86BigfontQueryFontReq);
+    REQUEST_SIZE_MATCH(xXF86BigfontQueryFontReq);
+
+    if (client->swapped)
+        swapl(&stuff->id);
+
     FontPtr pFont;
 
-    REQUEST(xXF86BigfontQueryFontReq);
     CARD32 stuff_flags;
     xCharInfo *pmax;
     xCharInfo *pmin;
@@ -521,17 +537,7 @@ ProcXF86BigfontQueryFont(ClientPtr client)
 
     {
         int nfontprops = pFont->info.nprops;
-        int rlength = nfontprops * sizeof(xFontProp)
-            + (nCharInfos > 0 && shmid == -1
-               ? nUniqCharInfos * sizeof(xCharInfo)
-               + (nCharInfos + 1) / 2 * 2 * sizeof(CARD16)
-               : 0);
-
-        xXF86BigfontQueryFontReply rep = {
-            .type = X_Reply,
-            .length = bytes_to_int32(sizeof(xXF86BigfontQueryFontReply)
-                                     - sizeof(xGenericReply) + rlength),
-            .sequenceNumber = client->sequence,
+        xXF86BigfontQueryFontReply reply = {
             .minBounds = pFont->info.ink_minbounds,
             .maxBounds = pFont->info.ink_maxbounds,
             .minCharOrByte2 = pFont->info.firstCol,
@@ -550,71 +556,37 @@ ProcXF86BigfontQueryFont(ClientPtr client)
         };
 
         if (client->swapped) {
-            swaps(&rep.sequenceNumber);
-            swapl(&rep.length);
-            swapCharInfo(&rep.minBounds);
-            swapCharInfo(&rep.maxBounds);
-            swaps(&rep.minCharOrByte2);
-            swaps(&rep.maxCharOrByte2);
-            swaps(&rep.defaultChar);
-            swaps(&rep.nFontProps);
-            swaps(&rep.fontAscent);
-            swaps(&rep.fontDescent);
-            swapl(&rep.nCharInfos);
-            swapl(&rep.nUniqCharInfos);
-            swapl(&rep.shmid);
-            swapl(&rep.shmsegoffset);
+            swapCharInfo(&reply.minBounds);
+            swapCharInfo(&reply.maxBounds);
+            swaps(&reply.minCharOrByte2);
+            swaps(&reply.maxCharOrByte2);
+            swaps(&reply.defaultChar);
+            swaps(&reply.nFontProps);
+            swaps(&reply.fontAscent);
+            swaps(&reply.fontDescent);
+            swapl(&reply.nCharInfos);
+            swapl(&reply.nUniqCharInfos);
+            swapl(&reply.shmid);
+            swapl(&reply.shmsegoffset);
         }
 
         int rc = Success;
-        char *buf = calloc(1, rlength);
-        if (!buf) {
-            rc = BadAlloc;
-            goto out;
+
+        x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
+
+        for (int i = 0; i < nfontprops; i++) {
+            x_rpcbuf_write_CARD32(&rpcbuf, pFont->info.props[i].name);
+            x_rpcbuf_write_CARD32(&rpcbuf, pFont->info.props[i].value);
         }
 
-        char *p = buf;
-
-        {
-            FontPropPtr pFP;
-            xFontProp *prFP;
-            int i;
-
-            for (i = 0, pFP = pFont->info.props, prFP = (xFontProp *) p;
-                 i < nfontprops; i++, pFP++, prFP++) {
-                prFP->name = pFP->name;
-                prFP->value = pFP->value;
-                if (client->swapped) {
-                    swapl(&prFP->name);
-                    swapl(&prFP->value);
-                }
-            }
-            p = (char *) prFP;
-        }
         if (nCharInfos > 0 && shmid == -1) {
-            xCharInfo *pci;
-            CARD16 *ps;
-            int i, j;
-
-            pci = (xCharInfo *) p;
-            for (i = 0; i < nUniqCharInfos; i++, pci++) {
-                *pci = pCI[pUniqIndex2Index[i]];
-                if (client->swapped)
-                    swapCharInfo(pci);
-            }
-            ps = (CARD16 *) pci;
-            for (j = 0; j < nCharInfos; j++, ps++) {
-                *ps = pIndex2UniqIndex[j];
-                if (client->swapped) {
-                    swaps(ps);
-                }
-            }
+            for (int i = 0; i < nUniqCharInfos; i++)
+                writeCharInfo(&rpcbuf, pCI[pUniqIndex2Index[i]]);
+            x_rpcbuf_write_CARD16s(&rpcbuf, pIndex2UniqIndex, nCharInfos);
         }
 
-        WriteToClient(client, sizeof(xXF86BigfontQueryFontReply), &rep);
-        WriteToClient(client, rlength, buf);
-        free(buf);
-out:
+        rc = X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
+
         if (nCharInfos > 0) {
             if (shmid == -1)
                 free(pIndex2UniqIndex);
@@ -640,36 +612,6 @@ ProcXF86BigfontDispatch(ClientPtr client)
     }
 }
 
-static int _X_COLD
-SProcXF86BigfontQueryVersion(ClientPtr client)
-{
-    return ProcXF86BigfontQueryVersion(client);
-}
-
-static int _X_COLD
-SProcXF86BigfontQueryFont(ClientPtr client)
-{
-    REQUEST(xXF86BigfontQueryFontReq);
-    REQUEST_SIZE_MATCH(xXF86BigfontQueryFontReq);
-    swapl(&stuff->id);
-    return ProcXF86BigfontQueryFont(client);
-}
-
-static int _X_COLD
-SProcXF86BigfontDispatch(ClientPtr client)
-{
-    REQUEST(xReq);
-
-    switch (stuff->data) {
-    case X_XF86BigfontQueryVersion:
-        return SProcXF86BigfontQueryVersion(client);
-    case X_XF86BigfontQueryFont:
-        return SProcXF86BigfontQueryFont(client);
-    default:
-        return BadRequest;
-    }
-}
-
 void
 XFree86BigfontExtensionInit(void)
 {
@@ -677,7 +619,7 @@ XFree86BigfontExtensionInit(void)
                      XF86BigfontNumberEvents,
                      XF86BigfontNumberErrors,
                      ProcXF86BigfontDispatch,
-                     SProcXF86BigfontDispatch,
+                     ProcXF86BigfontDispatch,
                      XF86BigfontResetProc, StandardMinorOpcode)) {
 #ifdef CONFIG_MITSHM
 #ifdef MUST_CHECK_FOR_SHM_SYSCALL
@@ -701,7 +643,7 @@ XFree86BigfontExtensionInit(void)
 
         FontShmdescIndex = xfont2_allocate_font_private_index();
 
-#if !defined(CSRG_BASED)
+#if !defined(CSRG_BASED) && !defined(__CYGWIN__)
         pagesize = SHMLBA;
 #else
 #ifdef _SC_PAGESIZE

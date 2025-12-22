@@ -34,6 +34,7 @@ from The Open Group.
 #include <X11/extensions/xcmiscproto.h>
 
 #include "dix/dix_priv.h"
+#include "dix/request_priv.h"
 #include "dix/resource_priv.h"
 #include "dix/rpcbuf_priv.h"
 #include "miext/extinit_priv.h"
@@ -55,21 +56,17 @@ ProcXCMiscGetVersion(ClientPtr client)
         swaps(&stuff->minorVersion);
     }
 
-    xXCMiscGetVersionReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = 0,
+    xXCMiscGetVersionReply reply = {
         .majorVersion = XCMiscMajorVersion,
         .minorVersion = XCMiscMinorVersion
     };
 
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swaps(&rep.majorVersion);
-        swaps(&rep.minorVersion);
+        swaps(&reply.majorVersion);
+        swaps(&reply.minorVersion);
     }
-    WriteToClient(client, sizeof(xXCMiscGetVersionReply), &rep);
-    return Success;
+
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 static int
@@ -80,20 +77,16 @@ ProcXCMiscGetXIDRange(ClientPtr client)
     XID min_id, max_id;
     GetXIDRange(client->index, FALSE, &min_id, &max_id);
 
-    xXCMiscGetXIDRangeReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = 0,
+    xXCMiscGetXIDRangeReply reply = {
         .start_id = min_id,
         .count = max_id - min_id + 1
     };
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.start_id);
-        swapl(&rep.count);
+        swapl(&reply.start_id);
+        swapl(&reply.count);
     }
-    WriteToClient(client, sizeof(xXCMiscGetXIDRangeReply), &rep);
-    return Success;
+
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }
 
 static int
@@ -120,24 +113,14 @@ ProcXCMiscGetXIDList(ClientPtr client)
     x_rpcbuf_write_CARD32s(&rpcbuf, pids, count);
     free(pids);
 
-    if (rpcbuf.error)
-        return BadAlloc;
-
-    xXCMiscGetXIDListReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
-        .length = count,
+    xXCMiscGetXIDListReply reply = {
         .count = count
     };
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.length);
-        swapl(&rep.count);
+        swapl(&reply.count);
     }
 
-    WriteToClient(client, sizeof(xXCMiscGetXIDListReply), &rep);
-    WriteRpcbufToClient(client, &rpcbuf);
-    return Success;
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 static int

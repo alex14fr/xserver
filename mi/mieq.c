@@ -45,6 +45,7 @@ in this Software without prior written authorization from The Open Group.
 #include   "dix/dix_priv.h"
 #include   "dix/input_priv.h"
 #include   "dix/inpututils_priv.h"
+#include   "dix/screensaver_priv.h"
 #include   "mi/mi_priv.h"
 #include   "mi/mipointer_priv.h"
 #include   "os/bug_priv.h"
@@ -56,7 +57,6 @@ in this Software without prior written authorization from The Open Group.
 #include   "inputstr.h"
 #include   "mipointer.h"
 #include   "scrnintstr.h"
-#include   "exglobals.h"
 #include   "eventstr.h"
 
 #ifdef DPMSExtension
@@ -300,7 +300,10 @@ mieqSetHandler(int event, mieqHandler handler)
 {
     if (handler && miEventQueue.handlers[event] != handler)
         ErrorF("[mi] mieq: warning: overriding existing handler %p with %p for "
-               "event %d\n", miEventQueue.handlers[event], handler, event);
+               "event %d\n",
+               (void*) miEventQueue.handlers[event],
+               (void*) handler,
+               event);
 
     miEventQueue.handlers[event] = handler;
 }

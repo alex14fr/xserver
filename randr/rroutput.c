@@ -25,6 +25,7 @@
 #include <X11/Xatom.h>
 
 #include "dix/dix_priv.h"
+#include "dix/request_priv.h"
 #include "randr/randrstr_priv.h"
 #include "randr/rrdispatch_priv.h"
 
@@ -445,13 +446,19 @@ int
 ProcRRGetOutputInfo(ClientPtr client)
 {
     REQUEST(xRRGetOutputInfoReq);
+    REQUEST_SIZE_MATCH(xRRGetOutputInfoReq);
+
+    if (client->swapped) {
+        swapl(&stuff->output);
+        swapl(&stuff->configTimestamp);
+    }
+
     RROutputPtr output;
     ScreenPtr pScreen;
     rrScrPrivPtr pScrPriv;
     int i;
     Bool leased;
 
-    REQUEST_SIZE_MATCH(xRRGetOutputInfoReq);
     VERIFY_RR_OUTPUT(stuff->output, output, DixReadAccess);
 
     leased = RROutputIsLeased(output);
@@ -459,7 +466,7 @@ ProcRRGetOutputInfo(ClientPtr client)
     pScreen = output->pScreen;
     pScrPriv = rrGetScrPriv(pScreen);
 
-    xRRGetOutputInfoReply rep = {
+    xRRGetOutputInfoReply reply = {
         .status = RRSetConfigSuccess,
         .timestamp = pScrPriv->lastSetTime.milliseconds,
         .nameLength = output->nameLength,
@@ -468,18 +475,18 @@ ProcRRGetOutputInfo(ClientPtr client)
     x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
 
     if (leased) {
-        rep.connection = RR_Disconnected;
-        rep.subpixelOrder = SubPixelUnknown;
+        reply.connection = RR_Disconnected;
+        reply.subpixelOrder = SubPixelUnknown;
     } else {
-        rep.crtc = output->crtc ? output->crtc->id : None;
-        rep.mmWidth = output->mmWidth;
-        rep.mmHeight = output->mmHeight;
-        rep.connection = output->nonDesktop ? RR_Disconnected : output->connection;
-        rep.subpixelOrder = output->subpixelOrder;
-        rep.nCrtcs = output->numCrtcs;
-        rep.nModes = output->numModes + output->numUserModes;
-        rep.nPreferred = output->numPreferred;
-        rep.nClones = output->numClones;
+        reply.crtc = output->crtc ? output->crtc->id : None;
+        reply.mmWidth = output->mmWidth;
+        reply.mmHeight = output->mmHeight;
+        reply.connection = output->nonDesktop ? RR_Disconnected : output->connection;
+        reply.subpixelOrder = output->subpixelOrder;
+        reply.nCrtcs = output->numCrtcs;
+        reply.nModes = output->numModes + output->numUserModes;
+        reply.nPreferred = output->numPreferred;
+        reply.nClones = output->numClones;
 
         for (i = 0; i < output->numCrtcs; i++)
             x_rpcbuf_write_CARD32(&rpcbuf, output->crtcs[i]->id);
@@ -498,19 +505,18 @@ ProcRRGetOutputInfo(ClientPtr client)
     x_rpcbuf_write_string_pad(&rpcbuf, output->name); /* indeed 0-terminated */
 
     if (client->swapped) {
-        swapl(&rep.timestamp);
-        swapl(&rep.crtc);
-        swapl(&rep.mmWidth);
-        swapl(&rep.mmHeight);
-        swaps(&rep.nCrtcs);
-        swaps(&rep.nModes);
-        swaps(&rep.nPreferred);
-        swaps(&rep.nClones);
-        swaps(&rep.nameLength);
+        swapl(&reply.timestamp);
+        swapl(&reply.crtc);
+        swapl(&reply.mmWidth);
+        swapl(&reply.mmHeight);
+        swaps(&reply.nCrtcs);
+        swaps(&reply.nModes);
+        swaps(&reply.nPreferred);
+        swaps(&reply.nClones);
+        swaps(&reply.nameLength);
     }
 
-    X_SEND_REPLY_WITH_RPCBUF(client, rep, rpcbuf);
-    return Success;
+    return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
 static void
@@ -540,13 +546,18 @@ int
 ProcRRSetOutputPrimary(ClientPtr client)
 {
     REQUEST(xRRSetOutputPrimaryReq);
+    REQUEST_SIZE_MATCH(xRRSetOutputPrimaryReq);
+
+    if (client->swapped) {
+        swapl(&stuff->window);
+        swapl(&stuff->output);
+    }
+
     RROutputPtr output = NULL;
     WindowPtr pWin;
     rrScrPrivPtr pScrPriv;
     int ret;
     ScreenPtr secondary;
-
-    REQUEST_SIZE_MATCH(xRRSetOutputPrimaryReq);
 
     ret = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
     if (ret != Success)
@@ -588,12 +599,15 @@ int
 ProcRRGetOutputPrimary(ClientPtr client)
 {
     REQUEST(xRRGetOutputPrimaryReq);
+    REQUEST_SIZE_MATCH(xRRGetOutputPrimaryReq);
+
+    if (client->swapped)
+        swapl(&stuff->window);
+
     WindowPtr pWin;
     rrScrPrivPtr pScrPriv;
     RROutputPtr primary = NULL;
     int rc;
-
-    REQUEST_SIZE_MATCH(xRRGetOutputPrimaryReq);
 
     rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
     if (rc != Success)
@@ -603,18 +617,13 @@ ProcRRGetOutputPrimary(ClientPtr client)
     if (pScrPriv)
         primary = pScrPriv->primaryOutput;
 
-    xRRGetOutputPrimaryReply rep = {
-        .type = X_Reply,
-        .sequenceNumber = client->sequence,
+    xRRGetOutputPrimaryReply reply = {
         .output = primary ? primary->id : None
     };
 
     if (client->swapped) {
-        swaps(&rep.sequenceNumber);
-        swapl(&rep.output);
+        swapl(&reply.output);
     }
 
-    WriteToClient(client, sizeof(xRRGetOutputPrimaryReply), &rep);
-
-    return Success;
+    return X_SEND_REPLY_SIMPLE(client, reply);
 }

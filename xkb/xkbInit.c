@@ -39,6 +39,7 @@ THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <X11/Xatom.h>
 #include <X11/extensions/XKMformat.h>
 
+#include "dix/screenint_priv.h"
 #include "os/bug_priv.h"
 #include "os/cmdline.h"
 #include "os/log_priv.h"
@@ -192,7 +193,7 @@ XkbWriteRulesProp(void)
         ErrorF("[xkb] Internal Error! bad size (%d!=%d) for _XKB_RULES_NAMES\n",
                out, len);
     }
-    dixChangeWindowProperty(serverClient, screenInfo.screens[0]->root, name,
+    dixChangeWindowProperty(serverClient, dixGetMasterScreen()->root, name,
                             XA_STRING, 8, PropModeReplace, len, pval, TRUE);
     free(pval);
     return TRUE;
@@ -737,7 +738,7 @@ XkbProcessArguments(int argc, char *argv[], int i)
 {
     if (strncmp(argv[i], "-xkbdir", 7) == 0) {
         if (++i < argc) {
-#if !defined(WIN32)
+#if !defined(WIN32) && !defined(__CYGWIN__)
             if (getuid() != geteuid()) {
                 LogMessage(X_WARNING,
                            "-xkbdir is not available for setuid X servers\n");

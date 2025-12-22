@@ -40,6 +40,10 @@
 #include <X11/extensions/randr.h>
 #include <X11/extensions/Xv.h>
 
+#ifdef GLAMOR_HAS_EGL
+#include <epoxy/egl.h>
+#endif
+
 #include "config/hotplug_priv.h"
 #include "dix/dix_priv.h"
 #include "mi/mi_priv.h"
@@ -66,6 +70,11 @@
 #ifdef XSERVER_LIBPCIACCESS
 #include <pciaccess.h>
 #endif
+
+#ifdef SEATD_LIBSEAT
+#include "seatd-libseat.h"
+#endif
+
 #include "driver.h"
 
 static void AdjustFrame(ScrnInfoPtr pScrn, int x, int y);
@@ -82,9 +91,11 @@ static Bool ScreenInit(ScreenPtr pScreen, int argc, char **argv);
 static Bool PreInit(ScrnInfoPtr pScrn, int flags);
 
 static Bool Probe(DriverPtr drv, int flags);
+#ifdef XSERVER_LIBPCIACCESS
 static Bool ms_pci_probe(DriverPtr driver,
                          int entity_num, struct pci_device *device,
                          intptr_t match_data);
+#endif
 static Bool ms_driver_func(ScrnInfoPtr scrn, xorgDriverFuncOp op, void *data);
 
 #ifdef XSERVER_LIBPCIACCESS
@@ -117,8 +128,13 @@ _X_EXPORT DriverRec modesetting = {
     NULL,
     0,
     ms_driver_func,
+#ifdef XSERVER_LIBPCIACCESS
     ms_device_match,
     ms_pci_probe,
+#else
+    NULL,
+    NULL,
+#endif
 #ifdef XSERVER_PLATFORM_BUS
     ms_platform_probe,
 #endif
@@ -131,6 +147,7 @@ static SymTabRec Chipsets[] = {
 
 static const OptionInfoRec Options[] = {
     {OPTION_SW_CURSOR, "SWcursor", OPTV_BOOLEAN, {0}, FALSE},
+    {OPTION_CURSOR_SIZE, "CursorSize", OPTV_STRING, {0}, FALSE},
     {OPTION_DEVICE_PATH, "kmsdev", OPTV_STRING, {0}, FALSE},
     {OPTION_SHADOW_FB, "ShadowFB", OPTV_BOOLEAN, {0}, FALSE},
     {OPTION_ACCEL_METHOD, "AccelMethod", OPTV_STRING, {0}, FALSE},
@@ -146,6 +163,8 @@ static const OptionInfoRec Options[] = {
 };
 
 int ms_entity_index = -1;
+
+static DevPrivateKeyRec asyncFlipPrivateKeyRec;
 
 static MODULESETUPPROTO(Setup);
 
@@ -226,17 +245,32 @@ open_hw(const char *dev)
     if ((fd = get_passed_fd()) != -1)
         return fd;
 
-    if (dev)
+    if (dev){
         fd = open(dev, O_RDWR | O_CLOEXEC, 0);
-    else {
+	#ifdef SEATD_LIBSEAT
+	/* try to open dev node via libseat */
+	if (fd == -1) {
+	    fd = seatd_libseat_open_graphics(dev);
+	}
+	#endif
+    } else {
         dev = getenv("KMSDEVICE");
         if ((NULL == dev) || ((fd = open(dev, O_RDWR | O_CLOEXEC, 0)) == -1)) {
             dev = "/dev/dri/card0";
             fd = open(dev, O_RDWR | O_CLOEXEC, 0);
+	    #ifdef SEATD_LIBSEAT
+	    if (fd == -1){
+                fd = seatd_libseat_open_graphics(dev);
+	    }
+	    #endif
         }
     }
-    if (fd == -1)
+    if (fd == -1) {
         xf86DrvMsg(-1, X_ERROR, "open %s: %s\n", dev, strerror(errno));
+    } else if (fd < -1) {
+        xf86DrvMsg(-1, X_ERROR, "open %s: failed to open, tried seatd_libseat_open_graphics and opening node directly",dev);
+	fd = -1;
+    }
 
     return fd;
 }
@@ -290,6 +324,7 @@ probe_hw(const char *dev, struct xf86_platform_device *platform_dev)
     return FALSE;
 }
 
+#ifdef XSERVER_LIBPCIACCESS
 static char *
 ms_DRICreatePCIBusID(const struct pci_device *dev)
 {
@@ -301,6 +336,7 @@ ms_DRICreatePCIBusID(const struct pci_device *dev)
 
     return busID;
 }
+#endif
 
 static Bool
 probe_hw_pci(const char *dev, struct pci_device *pdev)
@@ -463,8 +499,6 @@ Probe(DriverPtr drv, int flags)
     int i, numDevSections;
     GDevPtr *devSections;
     Bool foundScreen = FALSE;
-    const char *dev;
-    ScrnInfoPtr scrn = NULL;
 
     /* For now, just bail out for PROBE_DETECT. */
     if (flags & PROBE_DETECT)
@@ -479,11 +513,15 @@ Probe(DriverPtr drv, int flags)
     }
 
     for (i = 0; i < numDevSections; i++) {
-        int entity_num;
-        dev = xf86FindOptionValue(devSections[i]->options, "kmsdev");
-        if (probe_hw(dev, NULL)) {
+        int entity_num = -1;
+        ScrnInfoPtr scrn = NULL;
+        const char *dev = xf86FindOptionValue(devSections[i]->options, "kmsdev");
 
+        if (probe_hw(dev, NULL)) {
             entity_num = xf86ClaimFbSlot(drv, 0, devSections[i], TRUE);
+        }
+
+        if (entity_num != -1) {
             scrn = xf86ConfigFbEntity(scrn, 0, entity_num, NULL, NULL, NULL, NULL);
         }
 
@@ -522,7 +560,7 @@ rotate_clip(PixmapPtr pixmap, xf86CrtcPtr crtc, BoxPtr rect, drmModeClip *clip,
     int x1, y1, x2, y2;
 
     if (rotation == RR_Rotate_90 || rotation == RR_Rotate_270) {
-	/* width and height are swapped if rotated 90 or 270 degrees */
+        /* width and height are swapped if rotated 90 or 270 degrees */
         w = pixmap->drawable.height;
         h = pixmap->drawable.width;
     } else {
@@ -729,7 +767,7 @@ dispatch_dirty(ScreenPtr pScreen)
         if (!drmmode_crtc)
             continue;
 
-	drmmode_crtc_get_fb_id(crtc, &fb_id, &x, &y);
+        drmmode_crtc_get_fb_id(crtc, &fb_id, &x, &y);
 
         if (crtc->rotatedPixmap)
             pmap = crtc->rotatedPixmap;
@@ -893,9 +931,8 @@ msBlockHandler_oneshot(ScreenPtr pScreen, void *pTimeout)
 
 Bool
 ms_window_has_variable_refresh(modesettingPtr ms, WindowPtr win) {
-	struct ms_vrr_priv *priv = dixLookupPrivate(&win->devPrivates, &ms->drmmode.vrrPrivateKeyRec);
-
-	return priv->variable_refresh;
+        struct ms_vrr_priv *priv = dixLookupPrivate(&win->devPrivates, &ms->drmmode.vrrPrivateKeyRec);
+        return priv->variable_refresh;
 }
 
 static void
@@ -911,6 +948,43 @@ msSetWindowVRRMode(WindowPtr window, WindowVRRMode mode)
 
     if (ms->flip_window == window && ms->drmmode.present_flipping)
         ms_present_set_screen_vrr(scrn, variable_refresh);
+}
+
+
+Bool
+ms_window_has_async_flip(WindowPtr win)
+{
+    struct ms_async_flip_priv *priv = dixLookupPrivate(&win->devPrivates,
+                                                       &asyncFlipPrivateKeyRec);
+
+    return priv->async_flip;
+}
+
+void
+ms_window_update_async_flip(WindowPtr win, Bool async_flip)
+{
+    struct ms_async_flip_priv *priv = dixLookupPrivate(&win->devPrivates,
+                                                       &asyncFlipPrivateKeyRec);
+
+    priv->async_flip = async_flip;
+}
+
+Bool
+ms_window_has_async_flip_modifiers(WindowPtr win)
+{
+    struct ms_async_flip_priv *priv = dixLookupPrivate(&win->devPrivates,
+                                                       &asyncFlipPrivateKeyRec);
+
+    return priv->async_flip_modifiers;
+}
+
+void
+ms_window_update_async_flip_modifiers(WindowPtr win, Bool async_flip)
+{
+    struct ms_async_flip_priv *priv = dixLookupPrivate(&win->devPrivates,
+                                                       &asyncFlipPrivateKeyRec);
+
+    priv->async_flip_modifiers = async_flip;
 }
 
 static void
@@ -1063,14 +1137,11 @@ msShouldDoubleShadow(ScrnInfoPtr pScrn, modesettingPtr ms)
 static Bool
 ms_get_drm_master_fd(ScrnInfoPtr pScrn)
 {
-    EntityInfoPtr pEnt;
-    modesettingPtr ms;
-    modesettingEntPtr ms_ent;
-
-    ms = modesettingPTR(pScrn);
-    ms_ent = ms_ent_priv(pScrn);
-
-    pEnt = ms->pEnt;
+    modesettingPtr ms = modesettingPTR(pScrn);
+    modesettingEntPtr ms_ent = ms_ent_priv(pScrn);
+#if defined(XSERVER_PLATFORM_BUS) || defined(XSERVER_LIBPCIACCESS)
+    EntityInfoPtr pEnt = ms->pEnt;
+#endif
 
     if (ms_ent->fd) {
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
@@ -1226,17 +1297,6 @@ PreInit(ScrnInfoPtr pScrn, int flags)
 
     if (xf86ReturnOptValBool(ms->drmmode.Options, OPTION_SW_CURSOR, FALSE)) {
         ms->drmmode.sw_cursor = TRUE;
-    }
-
-    ms->max_cursor_width = 64;
-    ms->max_cursor_height = 64;
-    ret = drmGetCap(ms->fd, DRM_CAP_CURSOR_WIDTH, &value);
-    if (!ret) {
-        ms->max_cursor_width = value;
-    }
-    ret = drmGetCap(ms->fd, DRM_CAP_CURSOR_HEIGHT, &value);
-    if (!ret) {
-        ms->max_cursor_height = value;
     }
 
     try_enable_glamor(pScrn);
@@ -1711,6 +1771,11 @@ modesetCreateScreenResources(ScreenPtr pScreen)
                                sizeof(struct ms_vrr_priv)))
             return FALSE;
 
+    if (!dixRegisterPrivateKey(&asyncFlipPrivateKeyRec,
+                               PRIVATE_WINDOW,
+                               sizeof(struct ms_async_flip_priv)))
+            return FALSE;
+
     return ret;
 }
 
@@ -1755,14 +1820,15 @@ msSetSharedPixmapBacking(PixmapPtr ppix, void *fd_handle)
                                              ppix->devKind,
                                              ppix->drawable.depth,
                                              ppix->drawable.bitsPerPixel);
+        if (ihandle != -1) {
+            close(ihandle);
+        }
     } else {
         int size = ppix->devKind * ppix->drawable.height;
         ret = drmmode_SetSlaveBO(ppix, &ms->drmmode, ihandle, ppix->devKind, size);
     }
-    if (ret == FALSE)
-        return ret;
 
-    return TRUE;
+    return ret;
 #else
     return FALSE;
 #endif
@@ -1855,6 +1921,44 @@ CreateWindow_oneshot(WindowPtr pWin)
     if (ret)
         drmmode_copy_fb(pScrn, &ms->drmmode);
     return ret;
+}
+
+static int
+modesetting_get_cursor_interleave(int scrnIndex)
+{
+#ifdef GLAMOR_HAS_EGL
+    const char* renderer = (const char*)glGetString(GL_RENDERER);
+    if (!renderer) {
+        /* Something went really wrong */
+        xf86DrvMsg(scrnIndex, X_WARNING,
+                   "glGetString(GL_RENDERER) returned NULL, your GL is broken or not initialized\n");
+    }
+
+    const char* vendor = (const char*)glGetString(GL_VENDOR);
+    if (!vendor) {
+        /* Something went really wrong */
+        xf86DrvMsg(scrnIndex, X_WARNING,
+                   "glGetString(GL_VENDOR) returned NULL, your GL is broken or not initialized\n");
+    }
+
+#define CHECK_GL_NAME(name) ((renderer && strstr(renderer, name)) || (vendor && strstr(vendor, name)))
+
+    if (CHECK_GL_NAME("Intel")) {
+        /* from xf86-video-intel */
+        return HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64;
+    }
+    if (CHECK_GL_NAME("NVIDIA")) {
+        /* from xf86-video-{nouveau,nv} */
+        return HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_32;
+    }
+    if (CHECK_GL_NAME("AMD")) {
+        /* from xf86-video-{amdgpu,ati} */
+        return HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_1;
+    }
+
+#undef CHECK_GL_NAME
+#endif
+    return HARDWARE_CURSOR_SOURCE_MASK_NOT_INTERLEAVED;
 }
 
 static Bool
@@ -1965,11 +2069,15 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
     }
 
     /* Need to extend HWcursor support to handle mask interleave */
-    if (!ms->drmmode.sw_cursor)
-        xf86_cursors_init(pScreen, ms->max_cursor_width, ms->max_cursor_height,
-                          HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
+    if (!ms->drmmode.sw_cursor) {
+        /* XXX Is there any spec that says we should interleave the cursor bits? XXX */
+        int interleave = modesetting_get_cursor_interleave(pScrn->scrnIndex);
+
+        xf86_cursors_init(pScreen, ms->cursor_image_width, ms->cursor_image_height,
+                          interleave |
                           HARDWARE_CURSOR_UPDATE_UNHIDDEN |
                           HARDWARE_CURSOR_ARGB);
+    }
 
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */
@@ -2063,8 +2171,14 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
                 if (!ms->drmmode.reverse_prime_offload_mode) {
                     xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                        "Disable reverse prime offload mode for %s.\n", version->name);
+                } else {
+                    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                       "Enable reverse prime offload mode for %s.\n", version->name);
                 }
                 drmFreeVersion(version);
+            } else {
+                xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                           "Reverse prime offload mode enabled.\n");
             }
         }
     }
@@ -2181,6 +2295,10 @@ CloseScreen(ScreenPtr pScreen)
         ms->drmmode.shadow_fb = NULL;
         free(ms->drmmode.shadow_fb2);
         ms->drmmode.shadow_fb2 = NULL;
+    }
+
+    if (!ms->drmmode.sw_cursor || ms->drmmode.set_cursor_failed) {
+        xf86_cursors_fini(pScreen);
     }
 
     drmmode_uevent_fini(pScrn, &ms->drmmode);

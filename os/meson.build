@@ -20,7 +20,6 @@ srcs_os = [
     'utils.c',
     'xdmauth.c',
     'xhostname.c',
-    'xstrans.c',
     'xprintf.c',
     'log.c',
 ]

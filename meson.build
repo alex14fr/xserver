@@ -372,11 +372,6 @@ if build_glamor
     epoxy_dep = dependency('epoxy', required: false)
 endif
 
-xdmcp_dep = dependency('', required : false)
-if get_option('xdmcp')
-    xdmcp_dep = dependency('xdmcp')
-endif
-
 build_xdmcp = get_option('xdmcp')
 xdmcp_dep = dependency('xdmcp', required : build_xdmcp)
 

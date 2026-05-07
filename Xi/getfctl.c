@@ -256,8 +256,7 @@ ProcXGetFeedbackControl(ClientPtr client)
     BellFeedbackPtr b;
     LedFeedbackPtr l;
 
-    REQUEST(xGetFeedbackControlReq);
-    REQUEST_SIZE_MATCH(xGetFeedbackControlReq);
+    X_REQUEST_HEAD_STRUCT(xGetFeedbackControlReq);
 
     rc = dixLookupDevice(&dev, stuff->deviceid, client, DixGetAttrAccess);
     if (rc != Success)
@@ -312,8 +311,7 @@ ProcXGetFeedbackControl(ClientPtr client)
     for (b = dev->bell; b; b = b->next)
         CopySwapBellFeedback(client, b, &buf);
 
-    if (client->swapped) {
-        swaps(&reply.num_feedbacks);
-    }
+    X_REPLY_FIELD_CARD16(num_feedbacks);
+
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }

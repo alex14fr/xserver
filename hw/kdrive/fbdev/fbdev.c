@@ -30,24 +30,46 @@
 
 #include "fbdev.h"
 
-#ifndef xallocarray
-#define xallocarray(num, size) reallocarray(NULL, (num), (size))
+#if defined (GLAMOR) && defined (WITH_LIBDRM)
+#include <xf86drm.h>
 #endif
 
 const char *fbdevDevicePath = NULL;
+Bool fbDisableShadow = FALSE;
 
 static Bool
 fbdevInitialize(KdCardInfo * card, FbdevPriv * priv)
 {
     unsigned long off;
 
-    if (fbdevDevicePath == NULL)
-        fbdevDevicePath = "/dev/fb0";
+    if (fbdevDevicePath) {
+        priv->fd = open(fbdevDevicePath, O_RDWR);
+        if (priv->fd < 0) {
+            ErrorF("Error opening framebuffer %s: %s\n",
+                   fbdevDevicePath, strerror(errno));
+            return FALSE;
+        }
+    } else {
+        char devbuf[] = "/dev/fbxx";
+        priv->fd = -1;
+        for (int i = 0; i < 32 && priv->fd < 0; i++) {
+            snprintf(devbuf, sizeof(devbuf),
+                     "/dev/fb%d", i);
+            priv->fd = open(devbuf, O_RDWR);
 
-    if ((priv->fd = open(fbdevDevicePath, O_RDWR)) < 0) {
-        ErrorF("Error opening framebuffer %s: %s\n",
-               fbdevDevicePath, strerror(errno));
-        return FALSE;
+            if (priv->fd >= 0) {
+                struct fb_fix_screeninfo fix;
+                memset(&fix, 0, sizeof(fix));
+                if (ioctl(priv->fd, FBIOGET_FSCREENINFO, &fix) < 0) {
+                    close(priv->fd);
+                    priv->fd = -1;
+                }
+            }
+        }
+        if (priv->fd < 0) {
+            ErrorF("Error opening framebuffers /dev/fb[0-31]\n");
+            return FALSE;
+        }
     }
 
     /* quiet valgrind */
@@ -317,8 +339,10 @@ fbdevWindowLinear(ScreenPtr pScreen,
     KdScreenPriv(pScreen);
     FbdevPriv *priv = pScreenPriv->card->driver;
 
-    if (!pScreenPriv->enabled)
-        return 0;
+    if (!pScreenPriv->enabled) {
+        *size = 0;
+        return NULL;
+    }
     *size = priv->fix.line_length;
     return (CARD8 *) priv->fb + row * priv->fix.line_length + offset;
 }
@@ -331,8 +355,10 @@ fbdevWindowAfb(ScreenPtr pScreen,
     KdScreenPriv(pScreen);
     FbdevPriv *priv = pScreenPriv->card->driver;
 
-    if (!pScreenPriv->enabled)
-        return 0;
+    if (!pScreenPriv->enabled) {
+        *size = 0;
+        return NULL;
+    }
     /* offset to next plane */
     *size = priv->var.yres_virtual * priv->fix.line_length;
     return (CARD8 *) priv->fb + row * priv->fix.line_length + offset;
@@ -345,11 +371,14 @@ fbdevMapFramebuffer(KdScreenInfo * screen)
     KdPointerMatrix m;
     FbdevPriv *priv = screen->card->driver;
 
-    if (scrpriv->randr != RR_Rotate_0 ||
-        priv->fix.type != FB_TYPE_PACKED_PIXELS)
+    if (!fbDisableShadow) {
         scrpriv->shadow = TRUE;
-    else
+    } else if (scrpriv->randr != RR_Rotate_0 ||
+        priv->fix.type != FB_TYPE_PACKED_PIXELS) {
+        scrpriv->shadow = TRUE;
+    } else {
         scrpriv->shadow = FALSE;
+    }
 
     KdComputePointerMatrix(&m, scrpriv->randr, screen->width, screen->height);
 
@@ -681,7 +710,7 @@ fbdevCreateColormap(ColormapPtr pmap)
     case FB_VISUAL_STATIC_PSEUDOCOLOR:
         pVisual = pmap->pVisual;
         nent = pVisual->ColormapEntries;
-        pdefs = xallocarray(nent, sizeof(xColorItem));
+        pdefs = calloc(nent, sizeof(xColorItem));
         if (!pdefs)
             return FALSE;
         for (i = 0; i < nent; i++)
@@ -751,6 +780,14 @@ fbdevEnable(ScreenPtr pScreen)
 {
     KdScreenPriv(pScreen);
     FbdevPriv *priv = pScreenPriv->card->driver;
+#if defined (GLAMOR) && defined (WITH_LIBDRM)
+    KdScreenInfo *screen = pScreenPriv->screen;
+    FbdevScrPriv *scrpriv = screen->driver;
+
+    if (scrpriv->dri_fd >= 0) {
+        drmSetMaster(scrpriv->dri_fd);
+    }
+#endif
     int k;
 
     priv->var.activate = FB_ACTIVATE_NOW | FB_CHANGE_CMAP_VBL;
@@ -806,6 +843,15 @@ fbdevDPMS(ScreenPtr pScreen, int mode)
 void
 fbdevDisable(ScreenPtr pScreen)
 {
+#if defined (GLAMOR) && defined (WITH_LIBDRM)
+    KdScreenPriv(pScreen);
+    KdScreenInfo *screen = pScreenPriv->screen;
+    FbdevScrPriv *scrpriv = screen->driver;
+
+    if (scrpriv->dri_fd >= 0) {
+        drmDropMaster(scrpriv->dri_fd);
+    }
+#endif
 }
 
 void

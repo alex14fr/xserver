@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #include "dix/screen_hooks_priv.h"
+#include "include/mipict.h"
 #include "os/osdep.h"
 
 #include    <X11/X.h>
@@ -35,7 +36,6 @@
 #include    <X11/fonts/fontstruct.h>
 #include    <X11/fonts/libxfont2.h>
 #include    "mi.h"
-#include    "mipict.h"
 #include    "regionstr.h"
 #include    "globals.h"
 #include    "gcstruct.h"
@@ -1490,7 +1490,7 @@ static void damagePixmapDestroy(CallbackListPtr *pcbl, ScreenPtr pScreen, Pixmap
 }
 
 static void
-damageCopyWindow(WindowPtr pWindow, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
+damageCopyWindow(WindowPtr pWindow, xPoint ptOldOrg, RegionPtr prgnSrc)
 {
     ScreenPtr pScreen = pWindow->drawable.pScreen;
 
@@ -1714,7 +1714,7 @@ DamageCreate(DamageReportFunc damageReport,
     pDamage->damageDestroy = damageDestroy;
     pDamage->pScreen = pScreen;
 
-    if (pScrPriv->funcs.Create)
+    if (pScrPriv && pScrPriv->funcs.Create)
         pScrPriv->funcs.Create (pDamage);
 
     return pDamage;
@@ -1756,7 +1756,7 @@ DamageRegister(DrawablePtr pDrawable, DamagePtr pDamage)
         pDamage->isWindow = FALSE;
     pDamage->pDrawable = pDrawable;
     damageInsertDamage(getDrawableDamageRef(pDrawable), pDamage);
-    if (pScrPriv->funcs.Register)
+    if (pScrPriv && pScrPriv->funcs.Register)
         pScrPriv->funcs.Register (pDrawable, pDamage);
 }
 
@@ -1776,7 +1776,7 @@ DamageUnregister(DamagePtr pDamage)
 
     damageScrPriv(pScreen);
 
-    if (pScrPriv->funcs.Unregister)
+    if (pScrPriv && pScrPriv->funcs.Unregister)
         pScrPriv->funcs.Unregister (pDrawable, pDamage);
 
     if (pDrawable->type == DRAWABLE_WINDOW) {
@@ -1821,7 +1821,7 @@ DamageDestroy(DamagePtr pDamage)
     if (pDamage->damageDestroy)
         (*pDamage->damageDestroy) (pDamage, pDamage->closure);
 
-    if (pScrPriv->funcs.Destroy)
+    if (pScrPriv && pScrPriv->funcs.Destroy)
         pScrPriv->funcs.Destroy (pDamage);
 
     RegionUninit(&pDamage->damage);

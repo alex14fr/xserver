@@ -48,16 +48,12 @@
 int
 ProcXIGrabDevice(ClientPtr client)
 {
-    REQUEST(xXIGrabDeviceReq);
-    REQUEST_AT_LEAST_SIZE(xXIGrabDeviceReq);
-
-    if (client->swapped) {
-        swaps(&stuff->deviceid);
-        swapl(&stuff->grab_window);
-        swapl(&stuff->cursor);
-        swapl(&stuff->time);
-        swaps(&stuff->mask_len);
-    }
+    X_REQUEST_HEAD_AT_LEAST(xXIGrabDeviceReq);
+    X_REQUEST_FIELD_CARD16(deviceid);
+    X_REQUEST_FIELD_CARD32(grab_window);
+    X_REQUEST_FIELD_CARD32(cursor);
+    X_REQUEST_FIELD_CARD32(time);
+    X_REQUEST_FIELD_CARD16(mask_len);
 
     DeviceIntPtr dev;
     int ret = Success;
@@ -73,8 +69,10 @@ ProcXIGrabDevice(ClientPtr client)
     if (ret != Success)
         return ret;
 
-    if (!dev->enabled)
-        return AlreadyGrabbed;
+    if (!dev->enabled) {
+        status = XIAlreadyGrabbed;
+        goto reply;
+    }
 
     if (!InputDevIsMaster(dev))
         stuff->paired_device_mode = GrabModeAsync;
@@ -114,6 +112,8 @@ ProcXIGrabDevice(ClientPtr client)
     if (ret != Success)
         return ret;
 
+reply:
+    ;
     xXIGrabDeviceReply reply = {
         .RepType = X_XIGrabDevice,
         .status = status
@@ -125,13 +125,9 @@ ProcXIGrabDevice(ClientPtr client)
 int
 ProcXIUngrabDevice(ClientPtr client)
 {
-    REQUEST(xXIUngrabDeviceReq);
-    REQUEST_SIZE_MATCH(xXIUngrabDeviceReq);
-
-    if (client->swapped) {
-        swaps(&stuff->deviceid);
-        swapl(&stuff->time);
-    }
+    X_REQUEST_HEAD_STRUCT(xXIUngrabDeviceReq);
+    X_REQUEST_FIELD_CARD16(deviceid);
+    X_REQUEST_FIELD_CARD32(time);
 
     DeviceIntPtr dev;
     GrabPtr grab;

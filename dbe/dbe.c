@@ -112,7 +112,7 @@ DbeStubScreen(DbeScreenPrivPtr pDbeScreenPriv, int *nStubbedScreens)
 static int
 ProcDbeGetVersion(ClientPtr client)
 {
-    REQUEST_SIZE_MATCH(xDbeGetVersionReq);
+    X_REQUEST_HEAD_STRUCT(xDbeGetVersionReq);
 
     xDbeGetVersionReply reply = {
         .majorVersion = DBE_MAJOR_VERSION,
@@ -148,13 +148,9 @@ ProcDbeGetVersion(ClientPtr client)
 static int
 ProcDbeAllocateBackBufferName(ClientPtr client)
 {
-    REQUEST(xDbeAllocateBackBufferNameReq);
-    REQUEST_SIZE_MATCH(xDbeAllocateBackBufferNameReq);
-
-    if (client->swapped) {
-        swapl(&stuff->window);
-        swapl(&stuff->buffer);
-    }
+    X_REQUEST_HEAD_STRUCT(xDbeAllocateBackBufferNameReq);
+    X_REQUEST_FIELD_CARD32(window);
+    X_REQUEST_FIELD_CARD32(buffer);
 
     /* The window must be valid. */
     WindowPtr pWin;
@@ -355,11 +351,8 @@ ProcDbeAllocateBackBufferName(ClientPtr client)
 static int
 ProcDbeDeallocateBackBufferName(ClientPtr client)
 {
-    REQUEST(xDbeDeallocateBackBufferNameReq);
-    REQUEST_SIZE_MATCH(xDbeDeallocateBackBufferNameReq);
-
-    if (client->swapped)
-        swapl(&stuff->buffer);
+    X_REQUEST_HEAD_STRUCT(xDbeDeallocateBackBufferNameReq);
+    X_REQUEST_FIELD_CARD32(buffer);
 
     DbeWindowPrivPtr pDbeWindowPriv;
 
@@ -426,17 +419,18 @@ ProcDbeDeallocateBackBufferName(ClientPtr client)
 static int
 ProcDbeSwapBuffers(ClientPtr client)
 {
-    REQUEST(xDbeSwapBuffersReq);
-    REQUEST_AT_LEAST_SIZE(xDbeSwapBuffersReq);
+    X_REQUEST_HEAD_AT_LEAST(xDbeSwapBuffersReq);
+    X_REQUEST_FIELD_CARD32(n);
+
+    if (stuff->n == 0)
+        return Success;
+
+    if (stuff->n > UINT32_MAX / sizeof(DbeSwapInfoRec))
+        return BadLength;
+    REQUEST_FIXED_SIZE(xDbeSwapBuffersReq, stuff->n * sizeof(xDbeSwapInfo));
 
     if (client->swapped) {
         xDbeSwapInfo *pSwapInfo;
-
-        swapl(&stuff->n);
-        if (stuff->n > UINT32_MAX / sizeof(DbeSwapInfoRec))
-            return BadLength;
-        REQUEST_FIXED_SIZE(xDbeSwapBuffersReq, stuff->n * sizeof(xDbeSwapInfo));
-
         if (stuff->n != 0) {
             pSwapInfo = (xDbeSwapInfo *) stuff + 1;
 
@@ -452,15 +446,6 @@ ProcDbeSwapBuffers(ClientPtr client)
     int error = Success;
 
     unsigned int nStuff = stuff->n; /* use local variable for performance. */
-
-    if (nStuff == 0) {
-        REQUEST_SIZE_MATCH(xDbeSwapBuffersReq);
-        return Success;
-    }
-
-    if (nStuff > UINT32_MAX / sizeof(DbeSwapInfoRec))
-        return BadAlloc;
-    REQUEST_FIXED_SIZE(xDbeSwapBuffersReq, nStuff * sizeof(xDbeSwapInfo));
 
     /* Get to the swap info appended to the end of the request. */
     xDbeSwapInfo* dbeSwapInfo = (xDbeSwapInfo *) &stuff[1];
@@ -559,13 +544,9 @@ ProcDbeSwapBuffers(ClientPtr client)
 static int
 ProcDbeGetVisualInfo(ClientPtr client)
 {
-    REQUEST(xDbeGetVisualInfoReq);
-    REQUEST_AT_LEAST_SIZE(xDbeGetVisualInfoReq);
-
-    if (client->swapped) {
-        swapl(&stuff->n);
-        SwapRestL(stuff);
-    }
+    X_REQUEST_HEAD_AT_LEAST(xDbeGetVisualInfoReq);
+    X_REQUEST_FIELD_CARD32(n);
+    X_REQUEST_REST_CARD32();
 
     DbeScreenPrivPtr pDbeScreenPriv;
     Drawable *drawables;
@@ -644,9 +625,7 @@ ProcDbeGetVisualInfo(ClientPtr client)
         .m = count
     };
 
-    if (client->swapped) {
-        swapl(&reply.m);
-    }
+    X_REPLY_FIELD_CARD32(m);
 
     rc = X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 
@@ -675,11 +654,8 @@ clearRpcBuf:
 static int
 ProcDbeGetBackBufferAttributes(ClientPtr client)
 {
-    REQUEST(xDbeGetBackBufferAttributesReq);
-    REQUEST_SIZE_MATCH(xDbeGetBackBufferAttributesReq);
-
-    if (client->swapped)
-        swapl(&stuff->buffer);
+    X_REQUEST_HEAD_STRUCT(xDbeGetBackBufferAttributesReq);
+    X_REQUEST_FIELD_CARD32(buffer);
 
     DbeWindowPrivPtr pDbeWindowPriv;
     int rc;
@@ -697,9 +673,7 @@ ProcDbeGetBackBufferAttributes(ClientPtr client)
         reply.attributes = None;
     }
 
-    if (client->swapped) {
-        swapl(&reply.attributes);
-    }
+    X_REPLY_FIELD_CARD32(attributes);
 
     return X_SEND_REPLY_SIMPLE(client, reply);
 }

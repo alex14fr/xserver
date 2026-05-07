@@ -58,6 +58,7 @@ SOFTWARE.
 
 #include "dix/dix_priv.h"
 #include "dix/input_priv.h"
+#include "dix/request_priv.h"
 #include "Xi/handlers.h"
 
 /***********************************************************************
@@ -69,20 +70,15 @@ SOFTWARE.
 int
 ProcXAllowDeviceEvents(ClientPtr client)
 {
-    REQUEST(xAllowDeviceEventsReq);
-    REQUEST_SIZE_MATCH(xAllowDeviceEventsReq);
+    X_REQUEST_HEAD_STRUCT(xAllowDeviceEventsReq);
+    X_REQUEST_FIELD_CARD32(time);
 
-    if (client->swapped)
-        swapl(&stuff->time);
-
-    TimeStamp time;
     DeviceIntPtr thisdev;
-    int rc;
-
-    rc = dixLookupDevice(&thisdev, stuff->deviceid, client, DixGetAttrAccess);
+    int rc = dixLookupDevice(&thisdev, stuff->deviceid, client, DixGetAttrAccess);
     if (rc != Success)
         return rc;
-    time = ClientTimeToServerTime(stuff->time);
+
+    TimeStamp time = ClientTimeToServerTime(stuff->time);
 
     switch (stuff->mode) {
     case ReplayThisDevice:

@@ -12,6 +12,7 @@
 #include "dix/dix_priv.h"
 #include "dix/request_priv.h"
 #include "dix/screen_hooks_priv.h"
+#include "include/xvmcext.h"
 #include "miext/extinit_priv.h"
 #include "Xext/xvdix_priv.h"
 
@@ -22,7 +23,6 @@
 #include "scrnintstr.h"
 #include "extnsionst.h"
 #include "servermd.h"
-#include "xvmcext.h"
 
 #define SERVER_XVMC_MAJOR_VERSION               1
 #define SERVER_XVMC_MINOR_VERSION               1
@@ -103,18 +103,15 @@ XvMCDestroySubpictureRes(void *data, XID id)
 static int
 ProcXvMCQueryVersion(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcQueryVersionReq);
+
     xvmcQueryVersionReply reply = {
         .major = SERVER_XVMC_MAJOR_VERSION,
         .minor = SERVER_XVMC_MINOR_VERSION
     };
 
-    /* REQUEST(xvmcQueryVersionReq); */
-    REQUEST_SIZE_MATCH(xvmcQueryVersionReq);
-
-    if (client->swapped) {
-        swapl(&reply.major);
-        swapl(&reply.minor);
-    }
+    X_REPLY_FIELD_CARD32(major);
+    X_REPLY_FIELD_CARD32(minor);
 
     return X_SEND_REPLY_SIMPLE(client, reply);
 }
@@ -126,8 +123,8 @@ ProcXvMCListSurfaceTypes(ClientPtr client)
     XvMCScreenPtr pScreenPriv;
     XvMCAdaptorPtr adaptor = NULL;
 
-    REQUEST(xvmcListSurfaceTypesReq);
-    REQUEST_SIZE_MATCH(xvmcListSurfaceTypesReq);
+    X_REQUEST_HEAD_STRUCT(xvmcListSurfaceTypesReq);
+    X_REQUEST_FIELD_CARD32(port);
 
     VALIDATE_XV_PORT(stuff->port, pPort, DixReadAccess);
 
@@ -166,10 +163,7 @@ ProcXvMCListSurfaceTypes(ClientPtr client)
         .num = num_surfaces,
     };
 
-    if (client->swapped) {
-        swapl(&reply.num);
-    }
-
+    X_REPLY_FIELD_CARD32(num);
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
 
@@ -186,8 +180,11 @@ ProcXvMCCreateContext(ClientPtr client)
     XvMCAdaptorPtr adaptor = NULL;
     XvMCSurfaceInfoPtr surface = NULL;
 
-    REQUEST(xvmcCreateContextReq);
-    REQUEST_SIZE_MATCH(xvmcCreateContextReq);
+    X_REQUEST_HEAD_STRUCT(xvmcCreateContextReq);
+    X_REQUEST_FIELD_CARD32(context_id);
+    X_REQUEST_FIELD_CARD16(width);
+    X_REQUEST_FIELD_CARD16(height);
+    X_REQUEST_FIELD_CARD32(flags);
 
     VALIDATE_XV_PORT(stuff->port, pPort, DixReadAccess);
 
@@ -217,7 +214,7 @@ ProcXvMCCreateContext(ClientPtr client)
         }
     }
 
-    /* adaptor doesn't support this suface_type_id */
+    /* adaptor doesn't support this surface_type_id */
     if (!surface)
         return BadMatch;
 
@@ -259,11 +256,9 @@ ProcXvMCCreateContext(ClientPtr client)
         .flags_return = pContext->flags
     };
 
-    if (client->swapped) {
-        swaps(&reply.width_actual);
-        swaps(&reply.height_actual);
-        swapl(&reply.flags_return);
-    }
+    X_REPLY_FIELD_CARD16(width_actual);
+    X_REPLY_FIELD_CARD16(height_actual);
+    X_REPLY_FIELD_CARD32(flags_return);
 
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
@@ -271,13 +266,12 @@ ProcXvMCCreateContext(ClientPtr client)
 static int
 ProcXvMCDestroyContext(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcDestroyContextReq);
+    X_REQUEST_FIELD_CARD32(context_id);
+
     void *val;
-    int rc;
 
-    REQUEST(xvmcDestroyContextReq);
-    REQUEST_SIZE_MATCH(xvmcDestroyContextReq);
-
-    rc = dixLookupResourceByType(&val, stuff->context_id, XvMCRTContext,
+    int rc = dixLookupResourceByType(&val, stuff->context_id, XvMCRTContext,
                                  client, DixDestroyAccess);
     if (rc != Success)
         return rc;
@@ -290,15 +284,16 @@ ProcXvMCDestroyContext(ClientPtr client)
 static int
 ProcXvMCCreateSurface(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcCreateSurfaceReq);
+    X_REQUEST_FIELD_CARD32(surface_id);
+    X_REQUEST_FIELD_CARD32(context_id);
+
     CARD32 *data = NULL;
     int dwords = 0;
     int result;
     XvMCContextPtr pContext;
     XvMCSurfacePtr pSurface;
     XvMCScreenPtr pScreenPriv;
-
-    REQUEST(xvmcCreateSurfaceReq);
-    REQUEST_SIZE_MATCH(xvmcCreateSurfaceReq);
 
     result = dixLookupResourceByType((void **) &pContext, stuff->context_id,
                                      XvMCRTContext, client, DixUseAccess);
@@ -342,13 +337,12 @@ ProcXvMCCreateSurface(ClientPtr client)
 static int
 ProcXvMCDestroySurface(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcDestroySurfaceReq);
+    X_REQUEST_FIELD_CARD32(surface_id);
+
     void *val;
-    int rc;
 
-    REQUEST(xvmcDestroySurfaceReq);
-    REQUEST_SIZE_MATCH(xvmcDestroySurfaceReq);
-
-    rc = dixLookupResourceByType(&val, stuff->surface_id, XvMCRTSurface,
+    int rc = dixLookupResourceByType(&val, stuff->surface_id, XvMCRTSurface,
                                  client, DixDestroyAccess);
     if (rc != Success)
         return rc;
@@ -361,6 +355,13 @@ ProcXvMCDestroySurface(ClientPtr client)
 static int
 ProcXvMCCreateSubpicture(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcCreateSubpictureReq);
+    X_REQUEST_FIELD_CARD32(subpicture_id);
+    X_REQUEST_FIELD_CARD32(context_id);
+    X_REQUEST_FIELD_CARD32(xvimage_id);
+    X_REQUEST_FIELD_CARD16(width);
+    X_REQUEST_FIELD_CARD16(height);
+
     Bool image_supported = FALSE;
     CARD32 *data = NULL;
     int result, dwords = 0;
@@ -369,9 +370,6 @@ ProcXvMCCreateSubpicture(ClientPtr client)
     XvMCScreenPtr pScreenPriv;
     XvMCAdaptorPtr adaptor;
     XvMCSurfaceInfoPtr surface = NULL;
-
-    REQUEST(xvmcCreateSubpictureReq);
-    REQUEST_SIZE_MATCH(xvmcCreateSubpictureReq);
 
     result = dixLookupResourceByType((void **) &pContext, stuff->context_id,
                                      XvMCRTContext, client, DixUseAccess);
@@ -456,12 +454,10 @@ ProcXvMCCreateSubpicture(ClientPtr client)
         .component_order[3] = pSubpicture->component_order[3]
     };
 
-    if (client->swapped) {
-        swaps(&reply.width_actual);
-        swaps(&reply.height_actual);
-        swaps(&reply.num_palette_entries);
-        swaps(&reply.entry_bytes);
-    }
+    X_REPLY_FIELD_CARD16(width_actual);
+    X_REPLY_FIELD_CARD16(height_actual);
+    X_REPLY_FIELD_CARD16(num_palette_entries);
+    X_REPLY_FIELD_CARD16(entry_bytes);
 
     pContext->refcnt++;
 
@@ -471,13 +467,12 @@ ProcXvMCCreateSubpicture(ClientPtr client)
 static int
 ProcXvMCDestroySubpicture(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcDestroySubpictureReq);
+    X_REQUEST_FIELD_CARD32(subpicture_id);
+
     void *val;
-    int rc;
 
-    REQUEST(xvmcDestroySubpictureReq);
-    REQUEST_SIZE_MATCH(xvmcDestroySubpictureReq);
-
-    rc = dixLookupResourceByType(&val, stuff->subpicture_id, XvMCRTSubpicture,
+    int rc = dixLookupResourceByType(&val, stuff->subpicture_id, XvMCRTSubpicture,
                                  client, DixDestroyAccess);
     if (rc != Success)
         return rc;
@@ -490,15 +485,16 @@ ProcXvMCDestroySubpicture(ClientPtr client)
 static int
 ProcXvMCListSubpictureTypes(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcListSubpictureTypesReq);
+    X_REQUEST_FIELD_CARD32(port);
+    X_REQUEST_FIELD_CARD32(surface_type_id);
+
     XvPortPtr pPort;
     XvMCScreenPtr pScreenPriv;
     ScreenPtr pScreen;
     XvMCAdaptorPtr adaptor = NULL;
     XvMCSurfaceInfoPtr surface = NULL;
     XvImagePtr pImage;
-
-    REQUEST(xvmcListSubpictureTypesReq);
-    REQUEST_SIZE_MATCH(xvmcListSubpictureTypesReq);
 
     VALIDATE_XV_PORT(stuff->port, pPort, DixReadAccess);
 
@@ -589,9 +585,7 @@ ProcXvMCListSubpictureTypes(ClientPtr client)
         .num = num,
     };
 
-    if (client->swapped) {
-        swapl(&reply.num);
-    }
+    X_REPLY_FIELD_CARD32(num);
 
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
@@ -599,12 +593,14 @@ ProcXvMCListSubpictureTypes(ClientPtr client)
 static int
 ProcXvMCGetDRInfo(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(xvmcGetDRInfoReq);
+    X_REQUEST_FIELD_CARD32(port);
+    X_REQUEST_FIELD_CARD32(shmKey);
+    X_REQUEST_FIELD_CARD32(magic);
+
     XvPortPtr pPort;
     ScreenPtr pScreen;
     XvMCScreenPtr pScreenPriv;
-
-    REQUEST(xvmcGetDRInfoReq);
-    REQUEST_SIZE_MATCH(xvmcGetDRInfoReq);
 
     VALIDATE_XV_PORT(stuff->port, pPort, DixReadAccess);
 
@@ -631,14 +627,12 @@ ProcXvMCGetDRInfo(ClientPtr client)
      * Read back to the client what she has put in the shared memory
      * segment she prepared for us.
      */
-    if (client->swapped) {
-        swapl(&reply.major);
-        swapl(&reply.minor);
-        swapl(&reply.patchLevel);
-        swapl(&reply.nameLen);
-        swapl(&reply.busIDLen);
-        swapl(&reply.isLocal);
-    }
+    X_REPLY_FIELD_CARD32(major);
+    X_REPLY_FIELD_CARD32(minor);
+    X_REPLY_FIELD_CARD32(patchLevel);
+    X_REPLY_FIELD_CARD32(nameLen);
+    X_REPLY_FIELD_CARD32(busIDLen);
+    X_REPLY_FIELD_CARD32(isLocal);
 
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }

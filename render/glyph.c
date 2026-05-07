@@ -25,6 +25,7 @@
 #include <dix-config.h>
 
 #include "dix/screenint_priv.h"
+#include "include/mipict.h"
 #include "os/bug_priv.h"
 #include "misc.h"
 #include "scrnintstr.h"
@@ -388,7 +389,8 @@ AllocateGlyph(xGlyphInfo * gi, int fdepth)
 static Bool
 AllocateGlyphHash(GlyphHashPtr hash, GlyphHashSetPtr hashSet)
 {
-    assert(hashSet);
+    if (hashSet == NULL)
+        return FALSE;
     hash->table = calloc(hashSet->size, sizeof(GlyphRefRec));
     if (!hash->table)
         return FALSE;

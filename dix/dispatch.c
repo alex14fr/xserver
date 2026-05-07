@@ -212,13 +212,13 @@ GetCurrentClient(void)
 void
 UpdateCurrentTime(void)
 {
-    TimeStamp systime;
-
     /* To avoid time running backwards, we must call GetTimeInMillis before
      * calling ProcessInputEvents.
      */
-    systime.months = currentTime.months;
-    systime.milliseconds = GetTimeInMillis();
+    TimeStamp systime = {
+        .months = currentTime.months,
+        .milliseconds = GetTimeInMillis(),
+    };
     if (systime.milliseconds < currentTime.milliseconds)
         systime.months++;
     if (InputCheckPending())
@@ -231,10 +231,10 @@ UpdateCurrentTime(void)
 void
 UpdateCurrentTimeIf(void)
 {
-    TimeStamp systime;
-
-    systime.months = currentTime.months;
-    systime.milliseconds = GetTimeInMillis();
+    TimeStamp systime = {
+        .months = currentTime.months,
+        .milliseconds = GetTimeInMillis(),
+    };
     if (systime.milliseconds < currentTime.milliseconds)
         systime.months++;
     if (CompareTimeStamps(systime, currentTime) == LATER)
@@ -734,18 +734,17 @@ CreateConnectionBlock(void)
 
 int DoCreateWindowReq(ClientPtr client, xCreateWindowReq *stuff, XID *xids)
 {
-    WindowPtr pParent, pWin;
-    int rc;
-
     LEGAL_NEW_RESOURCE(stuff->wid, client);
-    rc = dixLookupWindow(&pParent, stuff->parent, client, DixAddAccess);
+
+    WindowPtr pParent;
+    int rc = dixLookupWindow(&pParent, stuff->parent, client, DixAddAccess);
     if (rc != Success)
         return rc;
     if (!stuff->width || !stuff->height) {
         client->errorValue = 0;
         return BadValue;
     }
-    pWin = dixCreateWindow(stuff->wid, pParent, stuff->x,
+    WindowPtr pWin = dixCreateWindow(stuff->wid, pParent, stuff->x,
                         stuff->y, stuff->width, stuff->height,
                         stuff->borderWidth, stuff->class,
                         stuff->mask, (XID *) xids,
@@ -869,15 +868,15 @@ ProcChangeSaveSet(ClientPtr client)
 int
 ProcReparentWindow(ClientPtr client)
 {
-    WindowPtr pWin, pParent;
-
     REQUEST(xReparentWindowReq);
-    int rc;
-
     REQUEST_SIZE_MATCH(xReparentWindowReq);
-    rc = dixLookupWindow(&pWin, stuff->window, client, DixManageAccess);
+
+    WindowPtr pWin;
+    int rc = dixLookupWindow(&pWin, stuff->window, client, DixManageAccess);
     if (rc != Success)
         return rc;
+
+    WindowPtr pParent;
     rc = dixLookupWindow(&pParent, stuff->parent, client, DixAddAccess);
     if (rc != Success)
         return rc;
@@ -896,16 +895,14 @@ ProcReparentWindow(ClientPtr client)
 int
 ProcMapWindow(ClientPtr client)
 {
-    WindowPtr pWin;
-
     REQUEST(xResourceReq);
     REQUEST_SIZE_MATCH(xResourceReq);
 
     if (client->swapped)
         swapl(&stuff->id);
 
-    int rc;
-    rc = dixLookupWindow(&pWin, stuff->id, client, DixShowAccess);
+    WindowPtr pWin;
+    int rc = dixLookupWindow(&pWin, stuff->id, client, DixShowAccess);
     if (rc != Success)
         return rc;
     MapWindow(pWin, client);
@@ -916,17 +913,14 @@ ProcMapWindow(ClientPtr client)
 int
 ProcMapSubwindows(ClientPtr client)
 {
-    WindowPtr pWin;
-
     REQUEST(xResourceReq);
     REQUEST_SIZE_MATCH(xResourceReq);
 
     if (client->swapped)
         swapl(&stuff->id);
 
-    int rc;
-
-    rc = dixLookupWindow(&pWin, stuff->id, client, DixListAccess);
+    WindowPtr pWin;
+    int rc = dixLookupWindow(&pWin, stuff->id, client, DixListAccess);
     if (rc != Success)
         return rc;
     MapSubwindows(pWin, client);
@@ -3011,12 +3005,17 @@ ProcStoreNamedColor(ClientPtr client)
 int
 ProcQueryColors(ClientPtr client)
 {
+    REQUEST(xQueryColorsReq);
+    REQUEST_AT_LEAST_SIZE(xQueryColorsReq);
+
+    if (client->swapped) {
+        swapl(&stuff->cmap);
+        SwapRestL(stuff);
+    }
+
     ColormapPtr pcmp;
     int rc;
 
-    REQUEST(xQueryColorsReq);
-
-    REQUEST_AT_LEAST_SIZE(xQueryColorsReq);
     rc = dixLookupResourceByType((void **) &pcmp, stuff->cmap, X11_RESTYPE_COLORMAP,
                                  client, DixReadAccess);
     if (rc == Success) {
@@ -3943,7 +3942,7 @@ ProcEstablishConnection(ClientPtr client)
     prefix = (xConnClientPrefix *) ((char *) stuff + sz_xReq);
 
     if (client->swapped && !dixSettingAllowByteSwappedClients) {
-        reason = "Prohibited client endianess, see the Xserver man page ";
+        reason = "Prohibited client endianness, see the Xserver man page ";
     } else if ((client->req_len << 2) != sz_xReq + sz_xConnClientPrefix +
             pad_to_int32(prefix->nbytesAuthProto) +
             pad_to_int32(prefix->nbytesAuthString))

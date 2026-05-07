@@ -76,8 +76,7 @@ ProcXGetDeviceFocus(ClientPtr client)
     FocusClassPtr focus;
     int rc;
 
-    REQUEST(xGetDeviceFocusReq);
-    REQUEST_SIZE_MATCH(xGetDeviceFocusReq);
+    X_REQUEST_HEAD_STRUCT(xGetDeviceFocusReq);
 
     rc = dixLookupDevice(&dev, stuff->deviceid, client, DixGetFocusAccess);
     if (rc != Success)
@@ -102,10 +101,8 @@ ProcXGetDeviceFocus(ClientPtr client)
     else
         reply.focus = focus->win->drawable.id;
 
-    if (client->swapped) {
-        swapl(&reply.focus);
-        swapl(&reply.time);
-    }
+    X_REPLY_FIELD_CARD32(focus);
+    X_REPLY_FIELD_CARD32(time);
 
     return X_SEND_REPLY_SIMPLE(client, reply);
 }

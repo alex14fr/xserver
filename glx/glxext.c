@@ -126,7 +126,7 @@ DrawableGone(__GLXdrawable * glxPriv, XID xid)
 
     /* drop our reference to any backing pixmap */
     if (glxPriv->type == GLX_DRAWABLE_PIXMAP)
-        glxPriv->pDraw->pScreen->DestroyPixmap((PixmapPtr) glxPriv->pDraw);
+        dixDestroyPixmap((PixmapPtr)glxPriv->pDraw, 0);
 
     glxPriv->destroy(glxPriv);
 
@@ -553,10 +553,9 @@ xorgGlxServerInit(CallbackListPtr *pcbl, void *param, void *ext)
     });
 }
 
-Bool
-xorgGlxCreateVendor(void)
+void xorgGlxCreateVendor(void)
 {
-    return AddCallback(glxServer.extensionInitCallback, xorgGlxServerInit, NULL);
+    AddCallback(glxServer.extensionInitCallback, xorgGlxServerInit, NULL);
 }
 
 /************************************************************************/

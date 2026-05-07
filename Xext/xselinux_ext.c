@@ -57,9 +57,9 @@ static char *
 SELinuxCopyContext(char *ptr, unsigned len)
 {
     char *copy = calloc(1, len + 1);
-
-    if (!copy)
+    if (!copy) {
         return NULL;
+    }
     strncpy(copy, ptr, len);
     copy[len] = '\0';
     return copy;
@@ -73,10 +73,8 @@ ProcSELinuxQueryVersion(ClientPtr client)
         .server_minor = SELINUX_MINOR_VERSION
     };
 
-    if (client->swapped) {
-        swaps(&reply.server_major);
-        swaps(&reply.server_minor);
-    }
+    X_REPLY_FIELD_CARD16(server_major);
+    X_REPLY_FIELD_CARD16(server_minor);
 
     return X_SEND_REPLY_SIMPLE(client, reply);
 }
@@ -89,8 +87,9 @@ SELinuxSendContextReply(ClientPtr client, security_id_t sid)
     int len = 0;
     if (sid) {
         char *ctx;
-        if (avc_sid_to_context_raw(sid, &ctx) < 0)
+        if (avc_sid_to_context_raw(sid, &ctx) < 0) {
             return BadValue;
+        }
         len = strlen(ctx) + 1;
         x_rpcbuf_write_string_0t_pad(&rpcbuf, ctx);
         free(ctx);
@@ -100,9 +99,7 @@ SELinuxSendContextReply(ClientPtr client, security_id_t sid)
         .context_len = len
     };
 
-    if (client->swapped) {
-        swapl(&reply.context_len);
-    }
+    X_REPLY_FIELD_CARD32(context_len);
 
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }
@@ -110,35 +107,33 @@ SELinuxSendContextReply(ClientPtr client, security_id_t sid)
 static int
 ProcSELinuxSetCreateContext(ClientPtr client, unsigned offset)
 {
-    REQUEST(SELinuxSetCreateContextReq);
-    REQUEST_AT_LEAST_SIZE(SELinuxSetCreateContextReq);
-
-    if (client->swapped)
-        swapl(&stuff->context_len);
-
+    X_REQUEST_HEAD_AT_LEAST(SELinuxSetCreateContextReq);
+    X_REQUEST_FIELD_CARD32(context_len);
     REQUEST_FIXED_SIZE(SELinuxSetCreateContextReq, stuff->context_len);
 
     PrivateRec **privPtr = &client->devPrivates;
     security_id_t *pSid;
     char *ctx = NULL;
     char *ptr;
-    int rc;
 
     if (stuff->context_len > 0) {
         ctx = SELinuxCopyContext((char *) (stuff + 1), stuff->context_len);
-        if (!ctx)
+        if (!ctx) {
             return BadAlloc;
+        }
     }
 
     ptr = dixLookupPrivate(privPtr, subjectKey);
     pSid = (security_id_t *) (ptr + offset);
     *pSid = NULL;
 
-    rc = Success;
+    int rc = Success;
     if (stuff->context_len > 0) {
         if (security_check_context_raw(ctx) < 0 ||
             avc_context_to_sid_raw(ctx, pSid) < 0)
+        {
             rc = BadValue;
+        }
     }
 
     free(ctx);
@@ -151,12 +146,13 @@ ProcSELinuxGetCreateContext(ClientPtr client, unsigned offset)
     security_id_t *pSid;
     char *ptr;
 
-    REQUEST_SIZE_MATCH(SELinuxGetCreateContextReq);
+    X_REQUEST_HEAD_STRUCT(SELinuxGetCreateContextReq);
 
-    if (offset == CTX_DEV)
+    if (offset == CTX_DEV) {
         ptr = dixLookupPrivate(&serverClient->devPrivates, subjectKey);
-    else
+    } else {
         ptr = dixLookupPrivate(&client->devPrivates, subjectKey);
+    }
 
     pSid = (security_id_t *) (ptr + offset);
     return SELinuxSendContextReply(client, *pSid);
@@ -165,13 +161,9 @@ ProcSELinuxGetCreateContext(ClientPtr client, unsigned offset)
 static int
 ProcSELinuxSetDeviceContext(ClientPtr client)
 {
-    REQUEST(SELinuxSetContextReq);
-    REQUEST_AT_LEAST_SIZE(SELinuxSetContextReq);
-
-    if (client->swapped) {
-        swapl(&stuff->id);
-        swapl(&stuff->context_len);
-    }
+    X_REQUEST_HEAD_AT_LEAST(SELinuxSetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
+    X_REQUEST_FIELD_CARD32(context_len);
 
     REQUEST_FIXED_SIZE(SELinuxSetContextReq, stuff->context_len);
 
@@ -180,17 +172,20 @@ ProcSELinuxSetDeviceContext(ClientPtr client)
     DeviceIntPtr dev;
     SELinuxSubjectRec *subj;
     SELinuxObjectRec *obj;
-    int rc;
 
-    if (stuff->context_len < 1)
+    if (stuff->context_len < 1) {
         return BadLength;
-    ctx = SELinuxCopyContext((char *) (stuff + 1), stuff->context_len);
-    if (!ctx)
-        return BadAlloc;
+    }
 
-    rc = dixLookupDevice(&dev, stuff->id, client, DixManageAccess);
-    if (rc != Success)
+    ctx = SELinuxCopyContext((char *) (stuff + 1), stuff->context_len);
+    if (!ctx) {
+        return BadAlloc;
+    }
+
+    int rc = dixLookupDevice(&dev, stuff->id, client, DixManageAccess);
+    if (rc != Success) {
         goto out;
+    }
 
     if (security_check_context_raw(ctx) < 0 ||
         avc_context_to_sid_raw(ctx, &sid) < 0) {
@@ -212,20 +207,16 @@ ProcSELinuxSetDeviceContext(ClientPtr client)
 static int
 ProcSELinuxGetDeviceContext(ClientPtr client)
 {
-    REQUEST(SELinuxGetContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetContextReq);
-
-    if (client->swapped) {
-        swapl(&stuff->id);
-    }
+    X_REQUEST_HEAD_STRUCT(SELinuxGetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
 
     DeviceIntPtr dev;
     SELinuxSubjectRec *subj;
-    int rc;
 
-    rc = dixLookupDevice(&dev, stuff->id, client, DixGetAttrAccess);
-    if (rc != Success)
+    int rc = dixLookupDevice(&dev, stuff->id, client, DixGetAttrAccess);
+    if (rc != Success) {
         return rc;
+    }
 
     subj = dixLookupPrivate(&dev->devPrivates, subjectKey);
     return SELinuxSendContextReply(client, subj->sid);
@@ -234,25 +225,23 @@ ProcSELinuxGetDeviceContext(ClientPtr client)
 static int
 ProcSELinuxGetDrawableContext(ClientPtr client)
 {
-    REQUEST(SELinuxGetContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetContextReq);
-
-    if (client->swapped)
-        swapl(&stuff->id);
+    X_REQUEST_HEAD_STRUCT(SELinuxGetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
 
     DrawablePtr pDraw;
     PrivateRec **privatePtr;
     SELinuxObjectRec *obj;
-    int rc;
 
-    rc = dixLookupDrawable(&pDraw, stuff->id, client, 0, DixGetAttrAccess);
-    if (rc != Success)
+    int rc = dixLookupDrawable(&pDraw, stuff->id, client, 0, DixGetAttrAccess);
+    if (rc != Success) {
         return rc;
+    }
 
-    if (pDraw->type == DRAWABLE_PIXMAP)
+    if (pDraw->type == DRAWABLE_PIXMAP) {
         privatePtr = &((PixmapPtr) pDraw)->devPrivates;
-    else
+    } else {
         privatePtr = &((WindowPtr) pDraw)->devPrivates;
+    }
 
     obj = dixLookupPrivate(privatePtr, objectKey);
     return SELinuxSendContextReply(client, obj->sid);
@@ -261,27 +250,24 @@ ProcSELinuxGetDrawableContext(ClientPtr client)
 static int
 ProcSELinuxGetPropertyContext(ClientPtr client, void *privKey)
 {
-    REQUEST(SELinuxGetPropertyContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetPropertyContextReq);
-
-    if (client->swapped) {
-        swapl(&stuff->window);
-        swapl(&stuff->property);
-    }
+    X_REQUEST_HEAD_STRUCT(SELinuxGetPropertyContextReq);
+    X_REQUEST_FIELD_CARD32(window);
+    X_REQUEST_FIELD_CARD32(property);
 
     WindowPtr pWin;
     PropertyPtr pProp;
     SELinuxObjectRec *obj;
-    int rc;
 
-    rc = dixLookupWindow(&pWin, stuff->window, client, DixGetPropAccess);
-    if (rc != Success)
+    int rc = dixLookupWindow(&pWin, stuff->window, client, DixGetPropAccess);
+    if (rc != Success) {
         return rc;
+    }
 
     rc = dixLookupProperty(&pProp, pWin, stuff->property, client,
                            DixGetAttrAccess);
-    if (rc != Success)
+    if (rc != Success) {
         return rc;
+    }
 
     obj = dixLookupPrivate(&pProp->devPrivates, privKey);
     return SELinuxSendContextReply(client, obj->sid);
@@ -290,19 +276,16 @@ ProcSELinuxGetPropertyContext(ClientPtr client, void *privKey)
 static int
 ProcSELinuxGetSelectionContext(ClientPtr client, void *privKey)
 {
-    REQUEST(SELinuxGetContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetContextReq);
-
-    if (client->swapped)
-        swapl(&stuff->id);
+    X_REQUEST_HEAD_STRUCT(SELinuxGetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
 
     Selection *pSel;
     SELinuxObjectRec *obj;
-    int rc;
 
-    rc = dixLookupSelection(&pSel, stuff->id, client, DixGetAttrAccess);
-    if (rc != Success)
+    int rc = dixLookupSelection(&pSel, stuff->id, client, DixGetAttrAccess);
+    if (rc != Success) {
         return rc;
+    }
 
     obj = dixLookupPrivate(&pSel->devPrivates, privKey);
     return SELinuxSendContextReply(client, obj->sid);
@@ -311,19 +294,16 @@ ProcSELinuxGetSelectionContext(ClientPtr client, void *privKey)
 static int
 ProcSELinuxGetClientContext(ClientPtr client)
 {
-    REQUEST(SELinuxGetContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetContextReq);
-
-    if (client->swapped)
-        swapl(&stuff->id);
+    X_REQUEST_HEAD_STRUCT(SELinuxGetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
 
     ClientPtr target;
     SELinuxSubjectRec *subj;
-    int rc;
 
-    rc = dixLookupResourceOwner(&target, stuff->id, client, DixGetAttrAccess);
-    if (rc != Success)
+    int rc = dixLookupResourceOwner(&target, stuff->id, client, DixGetAttrAccess);
+    if (rc != Success) {
         return rc;
+    }
 
     subj = dixLookupPrivate(&target->devPrivates, subjectKey);
     return SELinuxSendContextReply(client, subj->sid);
@@ -336,12 +316,15 @@ SELinuxPopulateItem(SELinuxListItemRec * i, PrivateRec ** privPtr, CARD32 id,
     SELinuxObjectRec *obj = dixLookupPrivate(privPtr, objectKey);
     SELinuxObjectRec *data = dixLookupPrivate(privPtr, dataKey);
 
-    if (!i)
+    if (!i) {
         return BadValue;
-    if (avc_sid_to_context_raw(obj->sid, &i->octx) < 0)
+    }
+    if (avc_sid_to_context_raw(obj->sid, &i->octx) < 0) {
         return BadValue;
-    if (avc_sid_to_context_raw(data->sid, &i->dctx) < 0)
+    }
+    if (avc_sid_to_context_raw(data->sid, &i->dctx) < 0) {
         return BadValue;
+    }
 
     i->id = id;
     i->octx_len = bytes_to_int32(strlen(i->octx) + 1);
@@ -356,8 +339,9 @@ SELinuxFreeItems(SELinuxListItemRec * items, int count)
 {
     int k;
 
-    if (!items)
+    if (!items) {
         return;
+    }
 
     for (k = 0; k < count; k++) {
         freecon(items[k].octx);
@@ -386,9 +370,7 @@ SELinuxSendItemsToClient(ClientPtr client, SELinuxListItemRec * items,
         .count = count
     };
 
-    if (client->swapped) {
-        swapl(&reply.count);
-    }
+    X_REPLY_FIELD_CARD32(count);
 
     SELinuxFreeItems(items, count);
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
@@ -397,29 +379,29 @@ SELinuxSendItemsToClient(ClientPtr client, SELinuxListItemRec * items,
 static int
 ProcSELinuxListProperties(ClientPtr client)
 {
-    REQUEST(SELinuxGetContextReq);
-    REQUEST_SIZE_MATCH(SELinuxGetContextReq);
-
-    if (client->swapped)
-        swapl(&stuff->id);
+    X_REQUEST_HEAD_STRUCT(SELinuxGetContextReq);
+    X_REQUEST_FIELD_CARD32(id);
 
     WindowPtr pWin;
     PropertyPtr pProp;
     SELinuxListItemRec *items;
-    int rc, count, size, i;
+    int count, size, i;
     CARD32 id;
 
-    rc = dixLookupWindow(&pWin, stuff->id, client, DixListPropAccess);
-    if (rc != Success)
+    int rc = dixLookupWindow(&pWin, stuff->id, client, DixListPropAccess);
+    if (rc != Success) {
         return rc;
+    }
 
     /* Count the number of properties and allocate items */
     count = 0;
-    for (pProp = pWin->properties; pProp; pProp = pProp->next)
+    for (pProp = pWin->properties; pProp; pProp = pProp->next) {
         count++;
+    }
     items = calloc(count, sizeof(SELinuxListItemRec));
-    if (count && !items)
+    if (count && !items) {
         return BadAlloc;
+    }
 
     /* Fill in the items and calculate size */
     i = 0;
@@ -440,29 +422,32 @@ ProcSELinuxListProperties(ClientPtr client)
 static int
 ProcSELinuxListSelections(ClientPtr client)
 {
+    X_REQUEST_HEAD_STRUCT(SELinuxGetCreateContextReq);
+
     Selection *pSel;
     SELinuxListItemRec *items;
-    int rc, count, size, i;
+    int count, size, i;
     CARD32 id;
-
-    REQUEST_SIZE_MATCH(SELinuxGetCreateContextReq);
 
     /* Count the number of selections and allocate items */
     count = 0;
-    for (pSel = CurrentSelections; pSel; pSel = pSel->next)
+    for (pSel = CurrentSelections; pSel; pSel = pSel->next) {
         count++;
-    if (count == 0)
+    }
+    if (count == 0) {
         return SELinuxSendItemsToClient(client, NULL, 0, 0);
+    }
     items = calloc(count, sizeof(SELinuxListItemRec));
-    if (!items)
+    if (!items) {
         return BadAlloc;
+    }
 
     /* Fill in the items and calculate size */
     i = 0;
     size = 0;
     for (pSel = CurrentSelections; pSel; pSel = pSel->next) {
         id = pSel->selection;
-        rc = SELinuxPopulateItem(items + i, &pSel->devPrivates, id, &size);
+        int rc = SELinuxPopulateItem(items + i, &pSel->devPrivates, id, &size);
         if (rc != Success) {
             SELinuxFreeItems(items, count);
             return rc;

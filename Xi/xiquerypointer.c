@@ -65,13 +65,9 @@
 int
 ProcXIQueryPointer(ClientPtr client)
 {
-    REQUEST(xXIQueryPointerReq);
-    REQUEST_SIZE_MATCH(xXIQueryPointerReq);
-
-    if (client->swapped) {
-        swaps(&stuff->deviceid);
-        swapl(&stuff->win);
-    }
+    X_REQUEST_HEAD_STRUCT(xXIQueryPointerReq);
+    X_REQUEST_FIELD_CARD16(deviceid);
+    X_REQUEST_FIELD_CARD32(win);
 
     int rc;
     DeviceIntPtr pDev, kbd;
@@ -178,15 +174,13 @@ ProcXIQueryPointer(ClientPtr client)
     }
 #endif /* XINERAMA */
 
-    if (client->swapped) {
-        swapl(&reply.root);
-        swapl(&reply.child);
-        swapl(&reply.root_x);
-        swapl(&reply.root_y);
-        swapl(&reply.win_x);
-        swapl(&reply.win_y);
-        swaps(&reply.buttons_len);
-    }
+    X_REPLY_FIELD_CARD32(root);
+    X_REPLY_FIELD_CARD32(child);
+    X_REPLY_FIELD_CARD32(root_x);
+    X_REPLY_FIELD_CARD32(root_y);
+    X_REPLY_FIELD_CARD32(win_x);
+    X_REPLY_FIELD_CARD32(win_y);
+    X_REPLY_FIELD_CARD16(buttons_len);
 
     return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
 }

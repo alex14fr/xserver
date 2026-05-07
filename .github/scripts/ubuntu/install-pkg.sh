@@ -43,6 +43,7 @@ apt-get install -y \
 	libpixman-1-dev \
 	libspice-protocol-dev \
 	libsystemd-dev \
+	libtool \
 	libudev-dev \
 	libunwind-dev \
 	libx11-dev \
@@ -92,4 +93,5 @@ apt-get install -y \
 	xkb-data \
 	xutils-dev \
 	libxaw7-dev \
-	python3-mako
+	python3-mako \
+	libxcvt-dev

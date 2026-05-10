@@ -336,13 +336,10 @@ static ClientPtr
 SmartScheduleClient(void)
 {
     ClientPtr pClient, best = NULL;
-    int bestRobin, robin;
     long now = SmartScheduleTime;
-    long idle;
     int nready = 0;
-
-    bestRobin = 0;
-    idle = 2 * SmartScheduleSlice;
+    int bestRobin = 0;
+    long idle = 2 * SmartScheduleSlice;
 
     xorg_list_for_each_entry(pClient, &ready_clients, ready) {
         nready++;
@@ -354,7 +351,7 @@ SmartScheduleClient(void)
         }
 
         /* check priority to select best client */
-        robin =
+        int robin =
             (pClient->index -
              SmartLastIndex[pClient->smart_priority -
                             SMART_MIN_PRIORITY]) & 0xff;
@@ -478,10 +475,6 @@ DisableLimitedSchedulingLatency(void)
 void
 Dispatch(void)
 {
-    int result;
-    ClientPtr client;
-    long start_tick;
-
     nextFreeClientID = 1;
     nClients = 0;
 
@@ -503,11 +496,11 @@ Dispatch(void)
          *****************/
 
         if (!dispatchException && clients_are_ready()) {
-            client = SmartScheduleClient();
+            ClientPtr client = SmartScheduleClient();
 
             isItTimeToYield = FALSE;
 
-            start_tick = SmartScheduleTime;
+            long start_tick = SmartScheduleTime;
             while (!isItTimeToYield) {
                 if (InputCheckPending())
                     ProcessInputEvents();
@@ -547,6 +540,7 @@ Dispatch(void)
                                           client->index,
                                           client->requestBuffer);
 #endif
+                int result;
                 if (read_result < 0 || read_result > (maxBigRequestSize << 2))
                     result = BadLength;
                 else {
@@ -776,19 +770,16 @@ ProcCreateWindow(ClientPtr client)
 int
 ProcChangeWindowAttributes(ClientPtr client)
 {
-    WindowPtr pWin;
-
     REQUEST(xChangeWindowAttributesReq);
-    int len, rc;
-    Mask access_mode = 0;
-
     REQUEST_AT_LEAST_SIZE(xChangeWindowAttributesReq);
-    access_mode |= (stuff->valueMask & CWEventMask) ? DixReceiveAccess : 0;
+    Mask access_mode = (stuff->valueMask & CWEventMask) ? DixReceiveAccess : 0;
     access_mode |= (stuff->valueMask & ~CWEventMask) ? DixSetAttrAccess : 0;
-    rc = dixLookupWindow(&pWin, stuff->window, client, access_mode);
+
+    WindowPtr pWin;
+    int rc = dixLookupWindow(&pWin, stuff->window, client, access_mode);
     if (rc != Success)
         return rc;
-    len = client->req_len - bytes_to_int32(sizeof(xChangeWindowAttributesReq));
+    int len = client->req_len - bytes_to_int32(sizeof(xChangeWindowAttributesReq));
     if (len != Ones(stuff->valueMask))
         return BadLength;
     return ChangeWindowAttributes(pWin,

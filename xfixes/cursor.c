@@ -264,11 +264,10 @@ ProcXFixesSelectCursorInput(ClientPtr client)
     X_REQUEST_FIELD_CARD32(eventMask);
 
     WindowPtr pWin;
-    int rc;
-
-    rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
+    int rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
     if (rc != Success)
         return rc;
+
     if (stuff->eventMask & ~CursorAllEvents) {
         client->errorValue = stuff->eventMask;
         return BadValue;
@@ -349,20 +348,20 @@ ProcXFixesGetCursorImage(ClientPtr client)
 {
     X_REQUEST_HEAD_STRUCT(xXFixesGetCursorImageReq);
 
-    CursorPtr pCursor;
-    int npixels, width, height, rc, x, y;
-
-    pCursor = CursorForClient(client);
+    CursorPtr pCursor = CursorForClient(client);
     if (!pCursor)
         return BadCursor;
-    rc = XaceHookResourceAccess(client, pCursor->id, X11_RESTYPE_CURSOR,
+    int rc = XaceHookResourceAccess(client, pCursor->id, X11_RESTYPE_CURSOR,
                   pCursor, X11_RESTYPE_NONE, NULL, DixReadAccess);
     if (rc != Success)
         return rc;
+
+    int x, y;
     GetSpritePosition(PickPointer(client), &x, &y);
-    width = pCursor->bits->width;
-    height = pCursor->bits->height;
-    npixels = width * height;
+
+    int width = pCursor->bits->width;
+    int height = pCursor->bits->height;
+    int npixels = width * height;
 
     x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
 
@@ -398,18 +397,15 @@ ProcXFixesGetCursorImage(ClientPtr client)
 int
 ProcXFixesSetCursorName(ClientPtr client)
 {
-    CursorPtr pCursor;
-    char *tchar;
-    Atom atom;
-
     X_REQUEST_HEAD_AT_LEAST(xXFixesSetCursorNameReq);
     X_REQUEST_FIELD_CARD32(cursor);
     X_REQUEST_FIELD_CARD16(nbytes);
     REQUEST_FIXED_SIZE(xXFixesSetCursorNameReq, stuff->nbytes);
 
+    CursorPtr pCursor;
     VERIFY_CURSOR(pCursor, stuff->cursor, client, DixSetAttrAccess);
-    tchar = (char *) &stuff[1];
-    atom = MakeAtom(tchar, stuff->nbytes, TRUE);
+    char *tchar = (char *) &stuff[1];
+    Atom atom = MakeAtom(tchar, stuff->nbytes, TRUE);
     if (atom == BAD_RESOURCE)
         return BadAlloc;
 
@@ -424,13 +420,9 @@ ProcXFixesGetCursorName(ClientPtr client)
     X_REQUEST_FIELD_CARD32(cursor);
 
     CursorPtr pCursor;
-    const char *str;
-
     VERIFY_CURSOR(pCursor, stuff->cursor, client, DixGetAttrAccess);
-    if (pCursor->name)
-        str = NameForAtom(pCursor->name);
-    else
-        str = "";
+
+    const char *str = ((pCursor->name) ? NameForAtom(pCursor->name) : "");
 
     x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
     x_rpcbuf_write_string_pad(&rpcbuf, str);
@@ -451,24 +443,21 @@ ProcXFixesGetCursorImageAndName(ClientPtr client)
 {
     X_REQUEST_HEAD_STRUCT(xXFixesGetCursorImageAndNameReq);
 
-    CursorPtr pCursor;
-    int npixels;
-    const char *name;
-    int width, height;
-    int rc, x, y;
-
-    pCursor = CursorForClient(client);
+    CursorPtr pCursor = CursorForClient(client);
     if (!pCursor)
         return BadCursor;
-    rc = XaceHookResourceAccess(client, pCursor->id, X11_RESTYPE_CURSOR,
+    int rc = XaceHookResourceAccess(client, pCursor->id, X11_RESTYPE_CURSOR,
                   pCursor, X11_RESTYPE_NONE, NULL, DixReadAccess | DixGetAttrAccess);
     if (rc != Success)
         return rc;
+
+    int x, y;
     GetSpritePosition(PickPointer(client), &x, &y);
-    width = pCursor->bits->width;
-    height = pCursor->bits->height;
-    npixels = width * height;
-    name = pCursor->name ? NameForAtom(pCursor->name) : "";
+    int width = pCursor->bits->width;
+    int height = pCursor->bits->height;
+    int npixels = width * height;
+
+    const char *name = pCursor->name ? NameForAtom(pCursor->name) : "";
 
     x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
 
@@ -534,24 +523,26 @@ static Bool
 ReplaceCursorLookup(void *value, XID id, void *closure)
 {
     ReplaceCursorLookupPtr rcl = (ReplaceCursorLookupPtr) closure;
-    WindowPtr pWin;
-    GrabPtr pGrab;
     CursorPtr pCursor = 0, *pCursorRef = 0;
     XID cursor = 0;
 
     switch (rcl->type) {
     case X11_RESTYPE_WINDOW:
-        pWin = (WindowPtr) value;
+    {
+        WindowPtr pWin = (WindowPtr) value;
         if (pWin->optional) {
             pCursorRef = &pWin->optional->cursor;
             pCursor = *pCursorRef;
         }
         break;
+    }
     case X11_RESTYPE_PASSIVEGRAB:
-        pGrab = (GrabPtr) value;
+    {
+        GrabPtr pGrab = (GrabPtr) value;
         pCursorRef = &pGrab->cursor;
         pCursor = *pCursorRef;
         break;
+    }
     case X11_RESTYPE_CURSOR:
         pCursorRef = 0;
         pCursor = (CursorPtr) value;

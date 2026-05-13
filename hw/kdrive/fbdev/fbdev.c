@@ -30,23 +30,17 @@
 
 #include "fbdev.h"
 
-#if defined (GLAMOR) && defined (WITH_LIBDRM)
-#include <xf86drm.h>
-#endif
-
-const char *fbdevDevicePath = NULL;
-Bool fbDisableShadow = FALSE;
-
 static Bool
 fbdevInitialize(KdCardInfo * card, FbdevPriv * priv)
 {
     unsigned long off;
+    FbScreenConf *config = card->closure;
 
-    if (fbdevDevicePath) {
-        priv->fd = open(fbdevDevicePath, O_RDWR);
+    if (config->fbdevDevicePath) {
+        priv->fd = open(config->fbdevDevicePath, O_RDWR);
         if (priv->fd < 0) {
             ErrorF("Error opening framebuffer %s: %s\n",
-                   fbdevDevicePath, strerror(errno));
+                   config->fbdevDevicePath, strerror(errno));
             return FALSE;
         }
     } else {
@@ -370,8 +364,9 @@ fbdevMapFramebuffer(KdScreenInfo * screen)
     FbdevScrPriv *scrpriv = screen->driver;
     KdPointerMatrix m;
     FbdevPriv *priv = screen->card->driver;
+    FbScreenConf *config = screen->card->closure;
 
-    if (!fbDisableShadow) {
+    if (!config->fbDisableShadow) {
         scrpriv->shadow = TRUE;
     } else if (scrpriv->randr != RR_Rotate_0 ||
         priv->fix.type != FB_TYPE_PACKED_PIXELS) {
@@ -780,14 +775,7 @@ fbdevEnable(ScreenPtr pScreen)
 {
     KdScreenPriv(pScreen);
     FbdevPriv *priv = pScreenPriv->card->driver;
-#if defined (GLAMOR) && defined (WITH_LIBDRM)
-    KdScreenInfo *screen = pScreenPriv->screen;
-    FbdevScrPriv *scrpriv = screen->driver;
 
-    if (scrpriv->dri_fd >= 0) {
-        drmSetMaster(scrpriv->dri_fd);
-    }
-#endif
     int k;
 
     priv->var.activate = FB_ACTIVATE_NOW | FB_CHANGE_CMAP_VBL;
@@ -843,15 +831,6 @@ fbdevDPMS(ScreenPtr pScreen, int mode)
 void
 fbdevDisable(ScreenPtr pScreen)
 {
-#if defined (GLAMOR) && defined (WITH_LIBDRM)
-    KdScreenPriv(pScreen);
-    KdScreenInfo *screen = pScreenPriv->screen;
-    FbdevScrPriv *scrpriv = screen->driver;
-
-    if (scrpriv->dri_fd >= 0) {
-        drmDropMaster(scrpriv->dri_fd);
-    }
-#endif
 }
 
 void
@@ -872,6 +851,10 @@ fbdevCardFini(KdCardInfo * card)
     munmap(priv->fb_base, priv->fix.smem_len);
     close(priv->fd);
     free(priv);
+    card->driver = NULL;
+
+    free(card->closure);
+    card->closure = NULL;
 }
 
 /*

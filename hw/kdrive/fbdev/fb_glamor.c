@@ -22,71 +22,62 @@
 #include <xf86drm.h>
 #endif
 
-char *fbdev_glvnd_provider = NULL;
-char *fbdev_dri_path = NULL;
-
-bool fbdev_auto_dri3 = FALSE;
-bool es_allowed = TRUE;
-bool force_es = FALSE;
-bool fbGlamorAllowed = TRUE;
-bool fbForceGlamor = FALSE;
-bool fbXVAllowed = TRUE;
+#include <errno.h>
 
 Bool
 fbdevInitAccel(ScreenPtr pScreen)
 {
-#ifdef WITH_LIBDRM
     KdScreenPriv(pScreen);
     KdScreenInfo *screen = pScreenPriv->screen;
     FbdevScrPriv *scrpriv = screen->driver;
+    FbScreenConf *config = screen->card->closure;
 
-    if (fbdev_dri_path) {
-        scrpriv->dri_fd = open(fbdev_dri_path, O_RDWR);
+    if (config->fbdev_dri_path) {
+        scrpriv->dri_fd = open(config->fbdev_dri_path, O_RDWR);
         if (scrpriv->dri_fd >= 0) {
-            drmSetMaster(scrpriv->dri_fd);
+#ifdef WITH_LIBDRM
+            if (config->fbdev_drm_master) {
+                drmSetMaster(scrpriv->dri_fd);
+            } else {
+                drmDropMaster(scrpriv->dri_fd);
+            }
+#endif
         } else {
-            perror("open");
+            LogMessage(X_WARNING, "Could not open %s: %s\n", config->fbdev_dri_path, strerror(errno));
         }
     } else {
         scrpriv->dri_fd = -1;
     }
 
     if (scrpriv->dri_fd >= 0) {
-        fbdev_auto_dri3 = FALSE;
+        config->fbdev_auto_dri3 = FALSE;
     }
-#endif
 
     glamor_egl_conf_t glamor_egl_conf = {
                                          .screen = pScreen,
-                                         .glvnd_vendor = fbdev_glvnd_provider,
-#ifdef WITH_LIBDRM
+                                         .glvnd_vendor = config->fbdev_glvnd_provider,
                                          .fd = scrpriv->dri_fd,
-                                         .auto_dri = fbdev_auto_dri3,
-#else
-                                         .fd = -1;
-#endif
+                                         .auto_dri = config->fbdev_auto_dri3,
                                          .llvmpipe_allowed = TRUE,
                                          .force_glamor = TRUE,
-                                         .es_disallowed = !es_allowed,
-                                         .force_es = force_es,
+                                         .es_disallowed = !config->es_allowed,
+                                         .force_es = config->force_es,
                                         };
 
     if (!glamor_egl_init_internal(&glamor_egl_conf, NULL)) {
         return FALSE;
     }
 
-#ifdef WITH_LIBDRM
-    if (fbdev_auto_dri3) {
+    if (config->fbdev_auto_dri3) {
         scrpriv->dri_fd = glamor_egl_get_fd(pScreen);
     }
-#endif
 
     const char *renderer = (const char*)glGetString(GL_RENDERER);
 
     int flags = GLAMOR_USE_EGL_SCREEN;
-    if (!fbGlamorAllowed) {
+    if (!config->fbGlamorAllowed) {
         flags |= GLAMOR_NO_RENDER_ACCEL;
-    } else if (!fbForceGlamor){
+    } else if (!config->fbForceGlamor){
         if (!renderer ||
             strstr(renderer, "softpipe") ||
             strstr(renderer, "llvmpipe")) {
@@ -94,11 +85,8 @@ fbdevInitAccel(ScreenPtr pScreen)
         }
     }
 
-#ifdef WITH_LIBDRM
     if (scrpriv->dri_fd < 0 ||
-        flags & GLAMOR_NO_RENDER_ACCEL)
-#endif
-    {
+        flags & GLAMOR_NO_RENDER_ACCEL) {
         flags |= GLAMOR_NO_DRI3;
     }
 
@@ -108,7 +96,7 @@ fbdevInitAccel(ScreenPtr pScreen)
 
 #ifdef XV
     /* X-Video needs glamor render accel */
-    if (fbXVAllowed && !(flags & GLAMOR_NO_RENDER_ACCEL)) {
+    if (config->fbXVAllowed && !(flags & GLAMOR_NO_RENDER_ACCEL)) {
         kd_glamor_xv_init(pScreen);
     }
 #endif
@@ -117,21 +105,38 @@ fbdevInitAccel(ScreenPtr pScreen)
 }
 
 void
-fbdevEnableAccel(ScreenPtr screen)
+fbdevEnableAccel(ScreenPtr pScreen)
 {
-    (void)screen;
+#ifdef WITH_LIBDRM
+    KdScreenPriv(pScreen);
+    KdScreenInfo *screen = pScreenPriv->screen;
+    FbdevScrPriv *scrpriv = screen->driver;
+    FbScreenConf *config = screen->card->closure;
+
+    if (config->fbdev_drm_master && scrpriv->dri_fd >= 0) {
+        drmSetMaster(scrpriv->dri_fd);
+    }
+#endif
 }
 
 void
-fbdevDisableAccel(ScreenPtr screen)
+fbdevDisableAccel(ScreenPtr pScreen)
 {
-    (void)screen;
+#ifdef WITH_LIBDRM
+    KdScreenPriv(pScreen);
+    KdScreenInfo *screen = pScreenPriv->screen;
+    FbdevScrPriv *scrpriv = screen->driver;
+    FbScreenConf *config = screen->card->closure;
+
+    if (config->fbdev_drm_master && scrpriv->dri_fd >= 0) {
+        drmDropMaster(scrpriv->dri_fd);
+    }
+#endif
 }
 
 void
 fbdevFiniAccel(ScreenPtr pScreen)
 {
-#ifdef WITH_LIBDRM
     KdScreenPriv(pScreen);
     KdScreenInfo *screen = pScreenPriv->screen;
     FbdevScrPriv *scrpriv = screen->driver;
@@ -139,5 +144,4 @@ fbdevFiniAccel(ScreenPtr pScreen)
     if (scrpriv->dri_fd >= 0) {
         close(scrpriv->dri_fd);
     }
-#endif
 }

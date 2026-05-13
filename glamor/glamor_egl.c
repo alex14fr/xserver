@@ -28,7 +28,6 @@
  */
 #include <dix-config.h>
 
-#define GLAMOR_FOR_XORG /* for -Wmissing-prototypes */
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -63,6 +62,75 @@
 #include "glamor_egl_priv.h"
 #include "glamor_glx_provider.h"
 #include "dri3.h"
+
+/**
+ * EGLDeviceEXT's are internally stored as a globals.
+ * As such, when multiple screens query the same device,
+ * they end up with the same exact pointer value for the device.
+ *
+ * Then, per the spec, eglGetPlatformDisplayEXT returns the
+ * same EGLDisplay handle.
+ *
+ * This is a problem, because on teardown, each screen
+ * destroys it's EGLDevice, and since it can be shared by
+ * multiple screens, we risk destroying the display from under it.
+ *
+ * See: https://github.com/X11Libre/xserver/pull/2721
+ */
+
+typedef struct _freeDisplayList{
+    EGLDisplay dpy;
+    struct _freeDisplayList *next;
+} FreeDisplayList;
+
+static FreeDisplayList *freeDisplayList = NULL;
+
+static void
+glamor_egl_add_display_to_list(EGLDisplay dpy)
+{
+    if (dpy == EGL_NO_DISPLAY) {
+        return;
+    }
+
+    FreeDisplayList **ptr = &freeDisplayList;
+    while (*ptr) {
+        ptr = &(*ptr)->next;
+    }
+
+    *ptr = XNFalloc(sizeof(**ptr));
+    (*ptr)->dpy = dpy;
+    (*ptr)->next = NULL;
+}
+
+static void
+glamor_egl_destroy_display(EGLDisplay dpy)
+{
+    int num_found = 0;
+
+    if (dpy == EGL_NO_DISPLAY) {
+        return;
+    }
+
+    FreeDisplayList **ptr = &freeDisplayList;
+    while (*ptr) {
+        if ((*ptr)->dpy == dpy) {
+            num_found++;
+            if (num_found == 1) {
+                /* We found it once, remove it from the list */
+                *ptr = (*ptr)->next;
+                continue;
+            } else {
+                /* We found it more than once, stop searching */
+                break;
+            }
+        }
+        ptr = &(*ptr)->next;
+    }
+
+    if (num_found == 1) {
+        eglTerminate(dpy);
+    }
+}
 
 static DevPrivateKeyRec glamor_egl_screen_private_key;
 
@@ -245,7 +313,7 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
     struct glamor_screen_private *glamor_priv =
         glamor_get_screen_private(screen);
     glamor_egl_priv_t *glamor_egl;
-    EGLImageKHR image;
+    EGLImageKHR image = EGL_NO_IMAGE_KHR;
     GLuint texture;
     Bool ret = FALSE;
 
@@ -301,8 +369,14 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 
     glamor_make_current(glamor_priv);
 
+    if (glamor_egl->fast_gbm_import) {
+        image = eglCreateImageKHR(glamor_egl->display,
+                                  EGL_NO_CONTEXT,
+                                  EGL_NATIVE_PIXMAP_KHR, bo, NULL);
+    }
 #ifdef GBM_BO_FD_FOR_PLANE
-    if (glamor_egl->dmabuf_capable) {
+    if (image == EGL_NO_IMAGE_KHR &&
+        glamor_egl->dmabuf_capable) {
 #define ADD_ATTR(attrs, num, attr)                                      \
         do {                                                            \
             assert(((num) + 1) < (sizeof(attrs) / sizeof((attrs)[0]))); \
@@ -337,18 +411,16 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
                                   NULL,
                                   img_attrs);
 
+        if (image != EGL_NO_IMAGE_KHR) {
+            glamor_egl->fast_gbm_import = FALSE;
+        }
+
         for (plane = 0; plane < num_planes; plane++) {
             close(fds[plane]);
             fds[plane] = -1;
         }
     }
-    else
 #endif
-    {
-        image = eglCreateImageKHR(glamor_egl->display,
-                                  EGL_NO_CONTEXT,
-                                  EGL_NATIVE_PIXMAP_KHR, bo, NULL);
-    }
 
     if (image == EGL_NO_IMAGE_KHR) {
         glamor_set_pixmap_type(pixmap, GLAMOR_DRM_ONLY);
@@ -1564,7 +1636,7 @@ glamor_egl_pre_close_screen_cleanup(glamor_egl_priv_t *glamor_egl)
          * (on hot unplug another GPU may still be using glamor)
          */
         lastGLContext = NULL;
-        eglTerminate(glamor_egl->display);
+        glamor_egl_destroy_display(glamor_egl->display);
         glamor_egl->display = EGL_NO_DISPLAY;
     }
 
@@ -1798,6 +1870,7 @@ glamor_egl_init_display(glamor_egl_priv_t *glamor_egl, int *dri_fd)
      */
 #define GLAMOR_EGL_TRY_PLATFORM(platform, native, platform_fallback) \
     glamor_egl->display = glamor_egl_get_display2(platform, native, platform_fallback); \
+    glamor_egl_add_display_to_list(glamor_egl->display); \
     if (glamor_egl->display == EGL_NO_DISPLAY) { \
         LogMessage(X_ERROR, "glamor: eglGetDisplay(" #platform ", " #native ") failed\n"); \
     } else { \
@@ -1813,7 +1886,7 @@ glamor_egl_init_display(glamor_egl_priv_t *glamor_egl, int *dri_fd)
             return TRUE; \
         } \
         LogMessage(X_ERROR, "glamor: eglInitialize() failed on " #platform "\n"); \
-        eglTerminate(glamor_egl->display); \
+        glamor_egl_destroy_display(glamor_egl->display); \
         glamor_egl->display = EGL_NO_DISPLAY; \
     }
 
@@ -1953,7 +2026,8 @@ glamor_egl_init_internal(glamor_egl_conf_t* glamor_egl_conf, int *caps)
     }
 
 #ifdef GLAMOR_HAS_GBM
-    if (glamor_egl->fd >= 0) {
+    if (!glamor_egl->gbm && glamor_egl->fd >= 0 &&
+        glamor_egl_conf->auto_dri) {
         glamor_egl->gbm = gbm_create_device(glamor_egl->fd);
         if (!glamor_egl->gbm) {
             glamor_egl->gbm = gbm_create_device_by_name(glamor_egl->fd, "dumb");
@@ -2060,6 +2134,10 @@ glamor_egl_init_internal(glamor_egl_conf_t* glamor_egl_conf, int *caps)
         else
             glamor_egl->dmabuf_capable = FALSE;
     }
+#endif
+
+#ifdef GLAMOR_HAS_GBM
+    glamor_egl->fast_gbm_import = renderer && !strstr((const char *)renderer, "NVIDIA");
 #endif
 
     /* Check if at least one combination of format + modifier is supported */

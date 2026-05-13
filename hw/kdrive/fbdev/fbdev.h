@@ -47,27 +47,34 @@ typedef struct _fbdevPriv {
 typedef struct _fbdevScrPriv {
     Rotation randr;
     Bool shadow;
-#if defined (GLAMOR) && defined (WITH_LIBDRM)
+#ifdef GLAMOR
     int dri_fd;
 #endif
 } FbdevScrPriv;
 
-extern KdCardFuncs fbdevFuncs;
-extern const char *fbdevDevicePath;
-extern Bool fbDisableShadow;
+typedef struct _fbScreenConf {
+const char *fbdevDevicePath;
+Bool fbDisableShadow;
 
 #ifdef GLAMOR
-extern char *fbdev_glvnd_provider;
-extern char *fbdev_dri_path;
-extern bool fbdev_auto_dri3;
-extern bool es_allowed;
-extern bool force_es;
-extern bool fbGlamorAllowed;
-extern bool fbForceGlamor;
+char *fbdev_glvnd_provider;
+
+char *fbdev_dri_path;
+bool fbdev_auto_dri3;
+bool fbdev_drm_master;
+
+bool es_allowed;
+bool force_es;
+
+bool fbGlamorAllowed;
+bool fbForceGlamor;
 #ifdef XV
-extern bool fbXVAllowed;
+bool fbXVAllowed;
 #endif
 #endif
+} FbScreenConf;
+
+extern KdCardFuncs fbdevFuncs;
 
 Bool fbdevCardInit(KdCardInfo * card);
 

@@ -28,10 +28,34 @@
 
 #include <string.h>
 
+static FbScreenConf *fbCurrScreen = NULL;
+
 void
 InitCard(char *name)
 {
-    KdCardInfoAdd(&fbdevFuncs, 0);
+    fbCurrScreen = XNFalloc(sizeof(*fbCurrScreen));
+    *fbCurrScreen = (FbScreenConf) {
+                                    .fbdevDevicePath = NULL,
+                                    .fbDisableShadow = FALSE,
+#ifdef GLAMOR
+                                    .fbdev_glvnd_provider = NULL,
+
+                                    .fbdev_dri_path = NULL,
+                                    .fbdev_auto_dri3 = FALSE,
+                                    .fbdev_drm_master = FALSE,
+
+                                    .es_allowed = TRUE,
+                                    .force_es = FALSE,
+
+                                    .fbGlamorAllowed = TRUE,
+                                    .fbForceGlamor = FALSE,
+#ifdef XV
+                                    .fbXVAllowed = TRUE,
+#endif
+#endif
+                                   };
+
+    KdCardInfoAdd(&fbdevFuncs, fbCurrScreen);
 }
 
 #if INPUTTHREAD
@@ -69,32 +93,46 @@ ddxUseMsg(void)
     KdUseMsg();
     ErrorF("\nXfbdev Device Usage:\n");
     ErrorF
-        ("-fb path         Framebuffer device to use. Defaults to /dev/fb0\n");
+        ("-fb <path>           Framebuffer device to use. Defaults to /dev/fb0\n");
     ErrorF
-        ("-dri <path|auto> Optional drm device path to use\n");
+        ("-dri [path|auto]     Optional drm device path to use\n");
     ErrorF
-        ("-noshadow        Disable the ShadowFB layer if possible\n");
+        ("-drm-master          Enable master permissions on the fd used for dri\n");
     ErrorF
-        ("-glamor          Force enable glamor render acceleration if possible\n");
+        ("-noshadow            Disable the ShadowFB layer if possible\n");
     ErrorF
-        ("-noglamor        Force disable glamor render acceleration\n");
+        ("-glamor              Force enable glamor render acceleration if possible\n");
     ErrorF
-        ("-glvendor        Suggest what glvnd vendor library should be used\n");
+        ("-noglamor            Force disable glamor render acceleration\n");
     ErrorF
-        ("-force-gl        Force glamor to only use GL contexts\n");
+        ("-glvendor <string>   Suggest what glvnd vendor library should be used\n");
     ErrorF
-        ("-force-es        Force glamor to only use GLES contexts\n");
+        ("-force-gl            Force glamor to only use GL contexts\n");
     ErrorF
-        ("-noxv            Disable X-Video support\n");
+        ("-force-es            Force glamor to only use GLES contexts\n");
+    ErrorF
+        ("-noxv                Disable X-Video support\n");
     ErrorF("\n");
 }
 
 int
 ddxProcessArgument(int argc, char **argv, int i)
 {
+    if (!fbCurrScreen || !strcmp(argv[i], "-screen")) {
+        /* Put each screen on a separate card */
+        int implicit_first_screen = !fbCurrScreen;
+        InitCard(NULL);
+        if (implicit_first_screen) {
+            /* This is what KdInitOutput would have done */
+            KdCardInfo *card = KdCardInfoLast();
+            KdScreenInfo *screen = KdScreenInfoAdd(card);
+            KdParseScreen(screen, NULL);
+        }
+    }
+
     if (!strcmp(argv[i], "-fb")) {
         if (i + 1 < argc) {
-            fbdevDevicePath = argv[i + 1];
+            fbCurrScreen->fbdevDevicePath = argv[i + 1];
             return 2;
         }
         UseMsg();
@@ -102,24 +140,24 @@ ddxProcessArgument(int argc, char **argv, int i)
     }
 
     if (!strcmp(argv[i], "-noshadow")) {
-        fbDisableShadow = TRUE;
+        fbCurrScreen->fbDisableShadow = TRUE;
         return 1;
     }
 
 #ifdef GLAMOR
     if (!strcmp(argv[i], "-glamor")) {
-        fbForceGlamor = TRUE;
+        fbCurrScreen->fbForceGlamor = TRUE;
         return 1;
     }
 
     if (!strcmp(argv[i], "-noglamor")) {
-        fbGlamorAllowed = FALSE;
+        fbCurrScreen->fbGlamorAllowed = FALSE;
         return 1;
     }
 
     if (!strcmp(argv[i], "-glvendor")) {
         if (i + 1 < argc) {
-            fbdev_glvnd_provider = strdup(argv[i + 1]);
+            fbCurrScreen->fbdev_glvnd_provider = strdup(argv[i + 1]);
             return 2;
         }
         UseMsg();
@@ -129,30 +167,35 @@ ddxProcessArgument(int argc, char **argv, int i)
     if (!strcmp(argv[i], "-dri")) {
         if (i + 1 < argc) {
             if (argv[i + 1][0] == '-' || !strcmp(argv[i + 1], "auto")) {
-                fbdev_auto_dri3 = TRUE;
+                fbCurrScreen->fbdev_auto_dri3 = TRUE;
             } else {
-                fbdev_dri_path = strdup(argv[i + 1]);
+                fbCurrScreen->fbdev_dri_path = strdup(argv[i + 1]);
             }
             return 2;
         } else {
-            fbdev_auto_dri3 = TRUE;
+            fbCurrScreen->fbdev_auto_dri3 = TRUE;
             return 1;
         }
     }
 
+    if (!strcmp(argv[i], "-drm-master")) {
+        fbCurrScreen->fbdev_drm_master = TRUE;
+        return 1;
+    }
+
     if (!strcmp(argv[i], "-force-gl")) {
-        es_allowed = FALSE;
+        fbCurrScreen->es_allowed = FALSE;
         return 1;
     }
 
     if (!strcmp(argv[i], "-force-es")) {
-        force_es = TRUE;
+        fbCurrScreen->force_es = TRUE;
         return 1;
     }
 
 #ifdef XV
     if (!strcmp(argv[i], "-noxv")) {
-        fbXVAllowed = FALSE;
+        fbCurrScreen->fbXVAllowed = FALSE;
         return 1;
     }
 #endif

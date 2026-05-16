@@ -310,6 +310,28 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
                                               struct gbm_bo *bo,
                                               Bool used_modifiers)
 {
+	 GLuint texture;
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    struct glamor_screen_private *glamor_priv =
+        glamor_get_screen_private(screen);
+    glamor_make_current(glamor_priv);
+    glamor_egl_priv_t *glamor_egl;
+    glamor_egl = glamor_egl_get_screen_private(screen);
+	 printf("fast import = %d\n", (glamor_egl->fast_gbm_import)); 
+	 EGLImageKHR image = eglCreateImageKHR(glamor_egl->display,
+                                  EGL_NO_CONTEXT,
+                                  EGL_NATIVE_PIXMAP_KHR, bo, NULL);
+	 if(image == EGL_NO_IMAGE_KHR) {
+		 printf("eglCreateImageKHR() failed\n");
+		 return FALSE;
+	 }
+    glamor_create_texture_from_image(screen, image, &texture);
+    glamor_set_pixmap_type(pixmap, GLAMOR_TEXTURE_DRM);
+    glamor_set_pixmap_texture(pixmap, texture);
+    glamor_egl_set_pixmap_image(pixmap, image, used_modifiers);
+	 return TRUE;
+
+#if 0
 #ifdef GLAMOR_HAS_GBM
     ScreenPtr screen = pixmap->drawable.pScreen;
     struct glamor_screen_private *glamor_priv =
@@ -439,6 +461,9 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 #else
     return FALSE;
 #endif
+
+#endif
+
 }
 
 #if defined(GLAMOR_HAS_GBM) && defined (WITH_LIBDRM)

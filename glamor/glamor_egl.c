@@ -371,7 +371,7 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 
     uint32_t gbm_format = gbm_bo_get_format(bo);
     if(pixmap->drawable.depth == 24 || pixmap->drawable.depth == 32)
-        gbm_format = GBM_FORMAT_ARGB8888;
+        gbm_format = DRM_FORMAT_ARGB8888;
 
     glamor_make_current(glamor_priv);
 
@@ -381,7 +381,7 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 		  img_attrs[2] = EGL_NONE; 
         image = eglCreateImageKHR(glamor_egl->display,
                                   EGL_NO_CONTEXT,
-                                  EGL_LINUX_DMA_BUF_EXT, bo, img_attrs);
+                                  EGL_LINUX_DRM_FOURCC_EXT, bo, img_attrs);
     }
 
 #ifdef GBM_BO_FD_FOR_PLANE

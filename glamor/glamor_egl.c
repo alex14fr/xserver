@@ -369,16 +369,20 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
     for (plane = 0; plane < num_planes; plane++) fds[plane] = -1;
 #endif
 
+    uint32_t gbm_format = gbm_bo_get_format(bo);
+    if(pixmap->drawable.depth == 24 || pixmap->drawable.depth == 32)
+        gbm_format = GBM_FORMAT_ARGB8888;
+
     glamor_make_current(glamor_priv);
 
     if (glamor_egl->fast_gbm_import) {
+		  img_attrs[0] = EGL_LINUX_DRM_FOURCC_EXT;
+		  img_attrs[1] = gbm_format;
+		  img_attrs[2] = EGL_NONE; 
         image = eglCreateImageKHR(glamor_egl->display,
                                   EGL_NO_CONTEXT,
-                                  EGL_NATIVE_PIXMAP_KHR, bo, NULL);
+                                  EGL_LINUX_DMA_BUF_EXT, bo, img_attrs);
     }
-
-
-	 image=EGL_NO_IMAGE_KHR;
 
 #ifdef GBM_BO_FD_FOR_PLANE
     if (image == EGL_NO_IMAGE_KHR &&
@@ -388,11 +392,6 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
             assert(((num) + 1) < (sizeof(attrs) / sizeof((attrs)[0]))); \
             (attrs)[(num)++] = (attr);                                  \
         } while (0)
-
-        uint32_t gbm_format = gbm_bo_get_format(bo);
-                 if(pixmap->drawable.depth == 24 || pixmap->drawable.depth == 32)
-                         gbm_format = GBM_FORMAT_ARGB8888;
-			printf("gbm_format=%d  bogetformat=%d\n", gbm_format, gbm_bo_get_format(bo));
 
         ADD_ATTR(img_attrs, attr_num, EGL_WIDTH);
         ADD_ATTR(img_attrs, attr_num, gbm_bo_get_width(bo));

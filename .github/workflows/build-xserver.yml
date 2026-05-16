@@ -22,7 +22,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Check out repository code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: prepare build environment
               run: |
@@ -68,7 +68,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Check out repository code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: prepare build environment
               run: |
@@ -97,21 +97,11 @@ jobs:
                 key: ${{ runner.name }}-x11-deps-${{ hashFiles('.github/scripts/ubuntu/install-prereq.sh') }}
                 restore-keys: ${{ runner.name }}-x11-deps-
 
-            - name: generic prereq
-              run:  .github/scripts/install-prereq-drivers.sh
-
-            - name: build xserver sdk
-              run:  |
-                echo -n > .meson_environment
-                echo "export MESON_BUILDDIR=$MESON_BUILDDIR" >> .meson_environment
-                echo "export PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> .meson_environment
-                .github/scripts/meson-build.sh --skip-test
-                sudo meson install --no-rebuild -C "$MESON_BUILDDIR"
-                sudo mkdir -p /usr/local/lib/$MACHINE/xorg/modules # /home/runner/x11/lib/xorg/modules
-                sudo chown -R runner /usr/local/lib/$MACHINE/xorg/modules # /home/runner/x11/lib/xorg/modules
+            - name: generic prereq and xserver
+              run:  .github/scripts/ubuntu/install-prereq-drivers.sh
 
             - name: compile drivers
-              run: .github/scripts/compile-drivers.sh
+              run: .github/scripts/ubuntu/compile-drivers.sh
 
     xserver-build-mingw32-ubuntu:
         runs-on: ubuntu-latest
@@ -119,7 +109,7 @@ jobs:
             MESON_ARGS: -Dprefix=/home/runner/x11 --cross-file=.github/scripts/mingw32/cross-i686-w64-mingw32.txt -Dwerror=true -Dglx=false -Dlisten_tcp=true -Dxvmc=true -Dxv=true -Dxvfb=true -Dxnest=true -Dxephyr=true -Dxfbdev=false
         steps:
             - name: Check out repository code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: prepare build environment
               run: |
@@ -165,7 +155,7 @@ jobs:
         runs-on: macos-latest
         steps:
             - name: Check out repository code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: prepare build environment
               run: |
@@ -221,7 +211,7 @@ jobs:
             MYTOKEN : ${{ secrets.MYTOKEN }}
             MESON_ARGS: -Dprefix=/usr -Dxephyr=true -Dwerror=true -Dxcsecurity=true -Dxorg=true -Dxvfb=true -Dxnest=true -Dxfbdev=false
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - name: run in freebsd VM
               id: xserver-build
               uses: vmactions/freebsd-vm@v1
@@ -236,7 +226,7 @@ jobs:
         env:
             MESON_ARGS: -Dwerror=true -Dxephyr=true -Dxorg=true -Dxvfb=true -Dxnest=true -Dxfbdev=false
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - name: run in DragonFlyBSD VM
               id: xserver-build
               uses: vmactions/dragonflybsd-vm@v1.1.4
@@ -251,7 +241,7 @@ jobs:
         env:
             MESON_ARGS: -Dwerror=true -Dxephyr=true -Dxorg=true -Dxvfb=true -Dxnest=true -Dxfbdev=false
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - uses: vmactions/netbsd-vm@v1.2.3
               id: vm
               with:
@@ -308,7 +298,7 @@ jobs:
                 key: ${{ runner.os }}-ccache
                 restore-keys: ${{ runner.os }}-ccache
             - run: git config --global --add safe.directory /cygdrive/d/a/xserver/xserver
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
               with:
                   # Done above as the builtin would use a path for Windows git.
                   set-safe-directory: false
@@ -329,11 +319,15 @@ jobs:
             with: # needed for `git describe` to work
                 fetch-tags: true
                 fetch-depth: 0
+          - name: disable git safe.directory for running in chroot
+            run:  git config --global --add safe.directory '*'
+          - name: determine pkg version from git
+            run:  git describe | sed -e 's~^xlibre-xserver-~~; s~-[0-9a-z]*$~~' | tr '-' '.' > .github/arch/GIT_VERSION
           - name: build arch package
-            uses: callmetango/archlinux-build-package-action@HEAD
+            uses: metux/archlinux-build-package-action@HEAD
             with:
                 path: .github/arch
-                flags: -cfse --noconfirm
+                makepkg-opts: -cfse --noconfirm
           - name: upload-artifacts
             uses: actions/upload-artifact@v7
             with:
@@ -374,7 +368,7 @@ jobs:
             - check-sign-off
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Create release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

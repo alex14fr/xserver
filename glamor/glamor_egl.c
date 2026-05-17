@@ -375,13 +375,10 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 
     glamor_make_current(glamor_priv);
 
-    if (glamor_egl->fast_gbm_import) {
-		  img_attrs[0] = EGL_LINUX_DRM_FOURCC_EXT;
-		  img_attrs[1] = gbm_format;
-		  img_attrs[2] = EGL_NONE; 
+    if (!glamor_priv->is_gles && glamor_egl->fast_gbm_import) {
         image = eglCreateImageKHR(glamor_egl->display,
                                   EGL_NO_CONTEXT,
-                                  EGL_LINUX_DRM_FOURCC_EXT, bo, img_attrs);
+                                  EGL_NATIVE_PIXMAP_KHR, bo, NULL);
     }
 
 #ifdef GBM_BO_FD_FOR_PLANE

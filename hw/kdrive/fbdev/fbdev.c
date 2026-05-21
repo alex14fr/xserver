@@ -219,11 +219,14 @@ fbdevScreenInitialize(KdScreenInfo * screen, FbdevScrPriv * scrpriv)
     var.nonstd = 0;
     var.grayscale = 0;
 
+    LogMessage(X_INFO, "Xfbdev(%d): Desired screen mode: width = %d, height = %d\n",
+               screen->card->mynum, var.xres, var.yres);
+
     k = ioctl(priv->fd, FBIOPUT_VSCREENINFO, &var);
 
     if (k < 0) {
         LogMessage(X_ERROR, "Xfbdev(%d): FBIOPUT_VSCREENINFO: %s\n",
-                   screen->pScreen->myNum, strerror(errno));
+                   screen->card->mynum, strerror(errno));
         return FALSE;
     }
 
@@ -231,12 +234,16 @@ fbdevScreenInitialize(KdScreenInfo * screen, FbdevScrPriv * scrpriv)
     k = ioctl(priv->fd, FBIOGET_FSCREENINFO, &priv->fix);
     if (k < 0)
         LogMessage(X_ERROR, "Xfbdev(%d): FBIOGET_FSCREENINFO: %s\n",
-                   screen->pScreen->myNum, strerror(errno));
+                   screen->card->mynum, strerror(errno));
 
     /* Now get the new screeninfo */
     ioctl(priv->fd, FBIOGET_VSCREENINFO, &priv->var);
     depth = priv->var.bits_per_pixel;
     gray = priv->var.grayscale;
+
+    /* Just because the ioctl didn't fail, it doesn't mean we could set the mode */
+    LogMessage(X_INFO, "Xfbdev(%d): Actual screen mode: width = %d, height = %d\n",
+               screen->card->mynum, priv->var.xres, priv->var.yres);
 
     /* Calculate fix.line_length if it's zero */
     if (!priv->fix.line_length)

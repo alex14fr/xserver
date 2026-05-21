@@ -371,14 +371,12 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
 
     uint32_t gbm_format = gbm_bo_get_format(bo);
 
-	 /*
     if(pixmap->drawable.depth == 24 || pixmap->drawable.depth == 32)
         gbm_format = DRM_FORMAT_ARGB8888;
-	*/
 
     glamor_make_current(glamor_priv);
 
-    if (/*!glamor_priv->is_gles && */ glamor_egl->fast_gbm_import) {
+    if (!glamor_priv->is_gles && glamor_egl->fast_gbm_import) {
         image = eglCreateImageKHR(glamor_egl->display,
                                   EGL_NO_CONTEXT,
                                   EGL_NATIVE_PIXMAP_KHR, bo, NULL);
@@ -788,7 +786,7 @@ gbm_format_for_depth(CARD8 depth, uint32_t *format)
         *format = GBM_FORMAT_RGB565;
         return true;
     case 24:
-        *format = GBM_FORMAT_ARGB8888; // override!
+        *format = GBM_FORMAT_XRGB8888;
         return true;
     case 30:
         *format = GBM_FORMAT_ARGB2101010;

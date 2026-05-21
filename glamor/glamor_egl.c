@@ -778,7 +778,7 @@ gbm_format_for_depth(CARD8 depth, uint32_t *format)
         *format = GBM_FORMAT_RGB565;
         return true;
     case 24:
-        *format = GBM_FORMAT_XRGB8888;
+        *format = GBM_FORMAT_ARGB8888;
         return true;
     case 30:
         *format = GBM_FORMAT_ARGB2101010;

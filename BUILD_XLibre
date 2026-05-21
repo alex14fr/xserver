@@ -4,10 +4,19 @@ PREFIX=/opt/xlibre
 export PKG_CONFIG_PATH=$PREFIX/lib64/pkgconfig
 export CC=/opt/gcc16/bin/gcc
 export CXX=$CC 
-export CFLAGS="-Og -g -march=$ARCH -Wcast-align"
+DEBUG=0
+if [ $DEBUG = 1 ]; then
+	lto="-Db_lto=true"
+	opt="-O3"
+else
+	lto=""
+	opt="-Og -g"
+fi
+export CFLAGS="$opt -march=$ARCH -Wcast-align"
 rm -fr /tmp/rootfs
 rm -fr build
 meson setup -Dglx=false \
+				$lto \
 				-Dglx_dri=false \
 			   -Dsuid_wrapper=false \
 				-Dglamor=true \

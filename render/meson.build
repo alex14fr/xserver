@@ -12,8 +12,17 @@ srcs_render = [
     'render.c',
 ]
 
+hdrs_render = [
+    'glyphstr.h',
+    'mipict.h',
+    'picture.h',
+    'picturestr.h',
+]
+
+xrender_dep = [ common_dep, dependency('libxxhash', required: true) ]
+
 libxserver_render = static_library('xserver_render',
     srcs_render,
     include_directories: inc,
-    dependencies: common_dep,
+    dependencies: xrender_dep,
 )

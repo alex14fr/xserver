@@ -391,7 +391,11 @@ jobs:
                     ./.github/arch/xlibre-xserver-*.tar.zst
 
     check-sign-off:
+<<<<<<< HEAD
+        name: Write comment if unsigned commits found
+=======
         name: Check Signed-Off-By
+>>>>>>> origin
         if: github.event_name == 'pull_request'
         runs-on: ubuntu-latest
         env:

@@ -20,7 +20,6 @@ srcs_os = [
     'utils.c',
     'xdmauth.c',
     'xhostname.c',
-    'xsha1.c',
     'xprintf.c',
     'log.c',
 ]
@@ -107,7 +106,6 @@ libxserver_os = static_library('xserver_os',
         dtrace_dep,
         common_dep,
         dl_dep,
-        sha1_dep,
         os_dep,
         dependency('xau')
     ],

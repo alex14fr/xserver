@@ -1,0 +1,66 @@
+#!/bin/sh
+ARCH=native
+PREFIX=/opt/xlibre
+export PKG_CONFIG_PATH=$PREFIX/lib64/pkgconfig
+export CC=/opt/gcc16/bin/gcc
+export CXX=$CC 
+export CFLAGS="-Og -g -march=$ARCH -Wcast-align"
+rm -fr /tmp/rootfs
+rm -fr build
+meson setup -Dglx=false \
+				-Dglx_dri=false \
+			   -Dsuid_wrapper=false \
+				-Dglamor=true \
+				--buildtype release \
+				--auto-features disabled \
+				-Dxephyr=false \
+				-Dxnest=true \
+				-Dxvfb=true \
+				-Dvgahw=false \
+				-Dint10=false \
+				-Ddri1=false \
+				-Ddri2=false \
+				-Ddri3=true \
+				-Dlisten_tcp=false \
+				-Dipv6=false \
+				-Dxcsecurity=false \
+				-Dxdmcp=false \
+				-Dxdm-auth-1=false \
+				-Ddga=false \
+				-Db_pie=true \
+				-Dtests=false \
+				-Dseatd_libseat=false \
+				--prefix $PREFIX . build
+samu -C build
+cd build ; meson install --destdir /tmp/rootfs ; cd ..
+cat > $PREFIX/share/X11/xorg.conf.d/01-atomic.conf << EOF
+Section "Device"
+Identifier "id1"
+Option "Atomic" "true"
+EndSection
+
+Section "Screen"
+Identifier "id2"
+Option "RenderingAPI" "es"
+EndSection
+EOF
+
+cd ../xkeyboard-config
+rm -fr build
+meson setup --prefix $PREFIX . build
+samu -C build
+cd build ; meson install --destdir /tmp/rootfs ; cd ..
+
+cd ../xf86-input-libinput
+rm -fr build
+meson setup --prefix $PREFIX . build
+samu -C build
+cd build ; meson install --destdir /tmp/rootfs ; cd ..
+
+cd /tmp/rootfs/$PREFIX/bin
+ln -s /usr/bin/xkbcomp
+cd -
+
+cd ../xserver
+tar cv -C /tmp/rootfs . | gzip -9c > xlibre-bin-$ARCH.tgz
+

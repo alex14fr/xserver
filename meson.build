@@ -492,7 +492,6 @@ else
     endif
 endif
 
->>>>>>> 856d325dea7addc4dd9c2c78a6bfedf37cbeeead
 build_xdmcp = get_option('xdmcp')
 xdmcp_dep = dependency('xdmcp', required : build_xdmcp)
 

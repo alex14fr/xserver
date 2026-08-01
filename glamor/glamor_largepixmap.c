@@ -5,6 +5,7 @@
 #include <stdint.h> /* For INT16_MAX */
 
 #include "os/bug_priv.h"
+#include "os/mathx_priv.h"
 
 #include "glamor_priv.h"
 
@@ -26,7 +27,7 @@ __glamor_large(glamor_pixmap_private *pixmap_priv) {
  */
 #if 0
 //#define DEBUGF(str, ...)  do {} while(0)
-#define DEBUGF(str, ...) ErrorF(str, ##__VA_ARGS__)
+#define DEBUGF(str, ...) ErrorF((str), ##__VA_ARGS__)
 //#define DEBUGRegionPrint(x) do {} while (0)
 #define DEBUGRegionPrint RegionPrint
 #endif
@@ -948,9 +949,9 @@ glamor_get_transform_block_size(struct pixman_transform *transform,
 }
 
 #define VECTOR_FROM_POINT(p, x, y) do {\
-	p.v[0] = x;  \
-	p.v[1] = y;  \
-	p.v[2] = 1.0; } while (0)
+	(p).v[0] = (x);  \
+	(p).v[1] = (y);  \
+	(p).v[2] = 1.0; } while (0)
 static void
 glamor_get_transform_extent_from_box(struct pixman_box32 *box,
                                      struct pixman_transform *transform)
@@ -1143,9 +1144,9 @@ glamor_composite_largepixmap_region(CARD8 op,
             return FALSE;
         }
         fixed_block_width =
-            min(fixed_block_width, source_transformed_block_width);
+            MIN(fixed_block_width, source_transformed_block_width);
         fixed_block_height =
-            min(fixed_block_height, source_transformed_block_height);
+            MIN(fixed_block_height, source_transformed_block_height);
         DEBUGF("new source block size %d x %d \n", fixed_block_width,
                fixed_block_height);
     }
@@ -1164,9 +1165,9 @@ glamor_composite_largepixmap_region(CARD8 op,
             return FALSE;
         }
         fixed_block_width =
-            min(fixed_block_width, mask_transformed_block_width);
+            MIN(fixed_block_width, mask_transformed_block_width);
         fixed_block_height =
-            min(fixed_block_height, mask_transformed_block_height);
+            MIN(fixed_block_height, mask_transformed_block_height);
         DEBUGF("new mask block size %d x %d \n", fixed_block_width,
                fixed_block_height);
     }
@@ -1318,7 +1319,7 @@ glamor_composite_largepixmap_region(CARD8 op,
 			 null_mask ? NULL : mask, dest,		\
 			 null_source ? NULL : source_pixmap,    \
 			 null_mask ? NULL : mask_pixmap, 	\
-			 dest_pixmap, region,		        \
+			 dest_pixmap, (region),		        \
 			 x_source, y_source, x_mask, y_mask,	\
 			 x_dest, y_dest)) {			\
 		assert(0);					\

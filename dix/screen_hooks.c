@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  */
@@ -17,12 +17,12 @@
 #define DECLARE_HOOK_PROC(NAME, FIELD, TYPE) \
     void dixScreenHook##NAME(ScreenPtr pScreen, TYPE func) \
     { \
-        AddCallback(&pScreen->FIELD, (CallbackProcPtr)func, pScreen); \
+        AddCallback(&pScreen->FIELD, (CallbackProcPtr)(func), pScreen); \
     } \
     \
     void dixScreenUnhook##NAME(ScreenPtr pScreen, TYPE func) \
     { \
-        DeleteCallback(&pScreen->FIELD, (CallbackProcPtr)func, pScreen); \
+        DeleteCallback(&pScreen->FIELD, (CallbackProcPtr)(func), pScreen); \
     }
 
 DECLARE_HOOK_PROC(WindowDestroy, hookWindowDestroy, XorgScreenWindowDestroyProcPtr)
@@ -109,4 +109,13 @@ void dixScreenRaiseUnrealizeWindow(WindowPtr pWin)
     pWin->realized = FALSE;
     if (pWin->drawable.pScreen->UnrealizeWindow)
         pWin->drawable.pScreen->UnrealizeWindow(pWin);
+}
+
+Bool dixScreenRaiseDisplayCursor(ScreenPtr pScreen, DeviceIntPtr pDev, CursorPtr pCursor)
+{
+    /* for now just calling the screen proc, but in the future we'll also handle hide
+       counters and animations here, so we don't need fragile proc wrapping anymore */
+    if (pScreen && pScreen->DisplayCursor)
+        return pScreen->DisplayCursor(pDev, pScreen, pCursor);
+    return FALSE;
 }

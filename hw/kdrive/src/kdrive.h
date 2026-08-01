@@ -49,10 +49,10 @@
 
 #include "xkbstr.h"
 
-#define KD_DPMS_NORMAL	    0
-#define KD_DPMS_STANDBY	    1
-#define KD_DPMS_SUSPEND	    2
-#define KD_DPMS_POWERDOWN   3
+#define KD_DPMS_NORMAL      0 /* DPMSModeOn */
+#define KD_DPMS_STANDBY     1 /* DPMSModeStandby */
+#define KD_DPMS_SUSPEND     2 /* DPMSModeSuspend */
+#define KD_DPMS_POWERDOWN   3 /* DPMSModeOff */
 #define KD_DPMS_MAX	    KD_DPMS_POWERDOWN
 
 #define Status int
@@ -272,9 +272,6 @@ struct _KdKeyboardInfo {
     int minScanCode;
     int maxScanCode;
 
-    /* Not set by the input driver */
-    int last_scan_code;
-
     int leds;
     int bellPitch;
     int bellDuration;
@@ -324,9 +321,6 @@ typedef struct _KdMonitorTiming {
     int vblank;                 /* blanking */
     KdSyncPolarity vpol;        /* polarity */
 } KdMonitorTiming;
-
-extern const KdMonitorTiming kdMonitorTimings[];
-extern const int kdNumMonitorTimings;
 
 typedef struct _KdPointerMatrix {
     int matrix[2][3];
@@ -527,13 +521,23 @@ void
 void KdRingBell(KdKeyboardInfo * ki, int volume, int pitch, int duration);
 
 /* kmode.c */
+int
+KdFindRate(KdScreenInfo * screen,
+           Bool (*supported) (KdScreenInfo *, const KdMonitorTiming *));
+
 const KdMonitorTiming *KdFindMode(KdScreenInfo * screen,
                                   Bool (*supported) (KdScreenInfo *,
                                                      const KdMonitorTiming *));
 
 Bool
-KdTuneMode(KdScreenInfo * screen,
-           Bool (*usable) (KdScreenInfo *),
+KdAddMode(const KdMonitorTiming *new);
+
+Bool
+KdAddModeCVT(int width, int height, int rate);
+
+Bool
+KdTuneMode(KdScreenInfo * screen, const KdMonitorTiming *m,
+           Bool (*usable) (KdScreenInfo *, const KdMonitorTiming *),
            Bool (*supported) (KdScreenInfo *, const KdMonitorTiming *));
 
 #ifdef RANDR

@@ -28,6 +28,7 @@
 #include <xorg-config.h>
 
 #ifdef XSERVER_PLATFORM_BUS
+#include <assert.h>
 #include <errno.h>
 
 #include <pciaccess.h>
@@ -36,8 +37,8 @@
 
 #include "config/hotplug_priv.h"
 #include "dix/screenint_priv.h"
-#include "randr/randrstr_priv.h"
 #include "os/osdep.h"
+#include "Xext/randr/randrstr_priv.h"
 
 #include "os.h"
 #include "../os-support/linux/systemd-logind.h"
@@ -255,8 +256,6 @@ xf86platformProbe(void)
     Bool pci = TRUE;
     XF86ConfOutputClassPtr cl, cl_head = (xf86configptr) ?
             xf86configptr->conf_outputclass_lst : NULL;
-    char *driver_path, *path = NULL;
-    char *curr, *next, *copy;
 
     config_odev_probe(xf86PlatformDeviceProbe);
 
@@ -264,6 +263,7 @@ xf86platformProbe(void)
         pci = FALSE;
     }
 
+    char *path = NULL;
     for (i = 0; i < xf86_num_platform_devices; i++) {
         char *busid = xf86_platform_odev_attributes(i)->busid;
 
@@ -281,18 +281,18 @@ xf86platformProbe(void)
 
             if (xf86ModPathFrom != X_CMDLINE) {
                 if (cl->driver) {
+                    char driver_path[PATH_MAX] = { 0 };
                     if (cl->modulepath) {
                         if (*(cl->modulepath)) {
-                            XNFasprintf(&driver_path, "%s,%s", cl->modulepath, xf86ModulePath);
+                            snprintf(driver_path, sizeof(driver_path)-1, "%s,%s", cl->modulepath, xf86ModulePath);
                             LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for driver %s overridden with \"%s\"\n",
                                     cl->identifier, cl->driver, driver_path);
                         } else {
-                            XNFasprintf(&driver_path, "%s", xf86ModulePath);
+                            snprintf(driver_path, sizeof(driver_path)-1, "%s", xf86ModulePath);
                             LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for driver %s reset to standard \"%s\"\n",
                                     cl->identifier, cl->driver, driver_path);
                         }
                     } else {
-                        driver_path = NULL;
                         LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for driver %s reset to default\n",
                                 cl->identifier, cl->driver);
                     }
@@ -300,51 +300,63 @@ xf86platformProbe(void)
                     if (cl->modules) {
                         LogMessageVerb(X_CONFIG, 1, "    and for modules \"%s\" as well\n",
                                 cl->modules);
-                        XNFasprintf(&copy, "%s", cl->modules);
-                        curr = copy;
+                        char *copy = strdup(cl->modules ? cl->modules : "");
+                        char *curr = copy;
+                        char *next;
                         while ((curr = strtok_r(curr, ",", &next))) {
                             if (*curr) LoaderSetPath(curr, driver_path);
                             curr = NULL;
                         }
                         free(copy);
                     }
-                    free(driver_path);
                 }
                 else if (cl->modules) {
+                    char driver_path[PATH_MAX] = { 0 };
                     if (cl->modulepath) {
                         if (*(cl->modulepath)) {
-                            XNFasprintf(&driver_path, "%s,%s", cl->modulepath, xf86ModulePath);
+                            snprintf(driver_path, sizeof(driver_path)-1, "%s,%s", cl->modulepath, xf86ModulePath);
                             LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for modules %s overridden with \"%s\"\n",
                                     cl->identifier, cl->modules, driver_path);
                         } else {
-                            XNFasprintf(&driver_path, "%s", xf86ModulePath);
+                            snprintf(driver_path, sizeof(driver_path)-1, "%s", xf86ModulePath);
                             LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for modules %s reset to standard \"%s\"\n",
                                     cl->identifier, cl->modules, driver_path);
                         }
                     } else {
-                        driver_path = NULL;
                         LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" ModulePath for modules %s reset to default\n",
                                 cl->identifier, cl->modules);
                     }
-                    XNFasprintf(&copy, "%s", cl->modules);
-                    curr = copy;
+                    char *copy = strdup(cl->modules ? cl->modules : "");
+                    char *curr = copy;
+                    char *next;
                     while ((curr = strtok_r(curr, ",", &next))) {
                         if (*curr) LoaderSetPath(curr, driver_path);
                         curr = NULL;
                     }
                     free(copy);
                 } else {
-                        driver_path = path; /* Reuse for temporary storage */
-                        if (*(cl->modulepath)) {
-                            XNFasprintf(&path, "%s,%s", cl->modulepath,
-                                    path ? path : xf86ModulePath);
+                    if (*(cl->modulepath)) {
+                        char *path2;
+                        if (asprintf(&path2, "%s,%s", cl->modulepath,
+                                path ? path : xf86ModulePath) == -1)
+                            LogMessageVerb(X_ERROR, 1, "memory allocation failed\n");
+                        else {
                             LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" default ModulePath extended to \"%s\"\n",
-                                    cl->identifier, path);
-                        } else {
-                            XNFasprintf(&path, "%s", xf86ModulePath);
-                            LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" default ModulePath reset to standard \"%s\"\n",
-                                    cl->identifier, path);
+                                cl->identifier, path2);
+                            free(path);
+                            path = path2;
                         }
+                    } else {
+                        char *path2 = strdup(xf86ModulePath);
+                        if (!path2)
+                            LogMessageVerb(X_ERROR, 1, "memory allocation failed\n");
+                        else {
+                            LogMessageVerb(X_CONFIG, 1, "OutputClass \"%s\" default ModulePath reset to standard \"%s\"\n",
+                                cl->identifier, path2);
+                            free(path);
+                            path = path2;
+                        }
+                    }
                 }
                 /* Otherwise global module search path is left unchanged */
             }
@@ -376,7 +388,8 @@ xf86platformProbe(void)
         }
     }
 
-    /* Then check for pci_device_is_boot_vga()/pci_device_is_boot_display() */
+    /* After the OutputClass loop above, scan for the primary device via
+     * various methods, preferring boot display over boot VGA. */
     for (i = 0; i < xf86_num_platform_devices; i++) {
         struct xf86_platform_device *dev = &xf86_platform_devices[i];
 
@@ -384,13 +397,28 @@ xf86platformProbe(void)
             continue;
 
         pci_device_probe(dev->pdev);
-        if (pci_device_is_boot_display(dev->pdev) ||
-            pci_device_is_boot_vga(dev->pdev)) {
+        if (pci_device_is_boot_display(dev->pdev)) {
             primaryBus.type = BUS_PLATFORM;
             primaryBus.id.plat = dev;
+            return 0;
         }
     }
 
+    /* Fall back to boot VGA if no boot display was found. */
+    for (i = 0; i < xf86_num_platform_devices; i++) {
+        struct xf86_platform_device *dev = &xf86_platform_devices[i];
+
+        if (!dev->pdev)
+            continue;
+
+        if (pci_device_is_boot_vga(dev->pdev)) {
+            primaryBus.type = BUS_PLATFORM;
+            primaryBus.id.plat = dev;
+            return 0;
+        }
+    }
+
+    /* No primary device found. */
     return 0;
 }
 
@@ -742,6 +770,15 @@ xf86platformAddDevice(const char *driver_name, int index)
         xf86DeleteScreen(xf86GPUScreens[i]);
         return -1;
     }
+
+   /*
+    * Almost everything uses these defaults, and many of those that
+    * don't, will wrap them.
+    */
+   xf86GPUScreens[i]->EnableDisableFBAccess = xf86EnableDisableFBAccess;
+#ifdef XFreeXDGA
+   xf86GPUScreens[i]->SetDGAMode = xf86SetDGAMode;
+#endif
 
    scr_index = AddGPUScreen(xf86GPUScreens[i]->ScreenInit, 0, NULL);
    if (scr_index == -1) {

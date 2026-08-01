@@ -68,7 +68,6 @@ SOFTWARE.
 #define NullWindow ((WindowPtr) 0)
 
 /* Forward declaration, we can't include input.h here */
-struct _DeviceIntRec;
 struct _Cursor;
 
 typedef struct _BackingStore *BackingStorePtr;
@@ -118,17 +117,17 @@ extern _X_EXPORT int ChangeWindowAttributes(WindowPtr /*pWin */ ,
                                             ClientPtr /*client */ );
 
 extern _X_EXPORT int ChangeWindowDeviceCursor(WindowPtr /*pWin */ ,
-                                              struct _DeviceIntRec * /*pDev */ ,
+                                              DeviceIntPtr /*pDev */ ,
                                               struct _Cursor * /*pCursor */ );
 
 extern _X_EXPORT struct _Cursor *WindowGetDeviceCursor(WindowPtr /*pWin */ ,
-                                                       struct _DeviceIntRec *
+                                                       DeviceIntPtr
                                                        /*pDev */ );
 
 /* Quartz support on Mac OS X uses the HIToolbox
    framework whose GetWindowAttributes function conflicts here. */
 #ifdef __APPLE__
-#define GetWindowAttributes(w,c,x) Darwin_X_GetWindowAttributes(w,c,x)
+#define GetWindowAttributes(w,c,x) Darwin_X_GetWindowAttributes((w),(c),(x))
 extern void Darwin_X_GetWindowAttributes(
 #else
 extern _X_EXPORT void GetWindowAttributes(

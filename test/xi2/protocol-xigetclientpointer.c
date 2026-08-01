@@ -26,6 +26,8 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
+
 /*
  * Protocol testing for XIGetClientPointer request.
  */
@@ -34,7 +36,7 @@
 #include <X11/Xproto.h>
 #include <X11/extensions/XI2proto.h>
 
-#include "Xi/handlers.h"
+#include "Xext/xinput/handlers.h"
 
 #include "inputstr.h"
 #include "windowstr.h"
@@ -43,7 +45,7 @@
 
 #include "protocol-common.h"
 
-DECLARE_WRAP_FUNCTION(WriteToClient, void, ClientPtr client, int len, void *data);
+DECLARE_WRAP_FUNCTION(dixWriteToClient, void, ClientPtr client, int len, void *data);
 
 static struct {
     int cp_is_set;
@@ -112,7 +114,7 @@ test_XIGetClientPointer(void)
 
     request.win = CLIENT_WINDOW_ID;
 
-    wrapped_WriteToClient = reply_XIGetClientPointer;
+    wrapped_dixWriteToClient = reply_XIGetClientPointer;
 
     client_request = init_client(request.length, &request);
 

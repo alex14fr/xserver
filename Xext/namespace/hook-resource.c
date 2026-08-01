@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later */
+/* Copyright (C) 2026 Enrico Weigelt, metux IT consult <info@metux.net> */
 #define HOOK_NAME "resource"
 
 #include <dix-config.h>
@@ -26,6 +28,10 @@ void hookResourceAccess(CallbackListPtr *pcbl, void *unused, void *calldata)
 
     // server can do anything
     if (param->client == serverClient)
+        goto pass;
+
+    // no restriction on super power
+    if (subj->ns->superPower)
         goto pass;
 
     // special filtering for windows: block transparency for untrusted clients
@@ -69,6 +75,7 @@ void hookResourceAccess(CallbackListPtr *pcbl, void *unused, void *calldata)
 
                 case X_CreateGC:
                 case X_CreatePixmap:
+                case X_CreateColormap:
                     if (checkAllowed(param->access_mode, DixGetAttrAccess))
                         goto pass;
                 break;

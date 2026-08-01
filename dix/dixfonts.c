@@ -19,37 +19,11 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
 SOFTWARE.
 
-************************************************************************/
-/* The panoramix components contained the following notice */
-/*
-Copyright (c) 1991, 1997 Digital Equipment Corporation, Maynard, Massachusetts.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software.
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-DIGITAL EQUIPMENT CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES, INCLUDING,
-BUT NOT LIMITED TO CONSEQUENTIAL OR INCIDENTAL DAMAGES, OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-Except as contained in this notice, the name of Digital Equipment Corporation
-shall not be used in advertising or otherwise to promote the sale, use or other
-dealings in this Software without prior written authorization from Digital
-Equipment Corporation.
-
 ******************************************************************/
 
 #include <dix-config.h>
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <X11/X.h>
 #include <X11/Xmd.h>
@@ -66,31 +40,29 @@ Equipment Corporation.
 #include "dix/server_priv.h"
 #include "dix/swaprep.h"
 #include "include/extinit.h"
+#include "include/misc.h"
 #include "include/gcstruct.h"
 #include "os/auth.h"
+#include "os/io_priv.h"
 #include "os/log_priv.h"
+#include "Xext/panoramiX/panoramiX_priv.h"
 
 #include "scrnintstr.h"
 #include "resource.h"
 #include "dixstruct.h"
 #include "cursorstr.h"
-#include "misc.h"
 #include "opaque.h"
 #include "dixfontstr.h"
 #include "dixfont.h"
 #include "xace.h"
 
-#ifdef XF86BIGFONT
-#include "xf86bigfontsrv.h"
-#endif
-
-#define XLFDMAXFONTNAMELEN      256
+#define XLFDMAXFONTNAMELEN      1024
 struct list_font_state {
     char pattern[XLFDMAXFONTNAMELEN];
     int patlen;
     int current_fpe;
     int max_names;
-    Bool list_started;
+    bool list_started;
     void *private;
 };
 
@@ -119,7 +91,7 @@ struct list_fonts_with_info_closure {
     struct list_font_state current;
     struct list_font_state saved;
     int savedNumFonts;
-    Bool haveSaved;
+    bool haveSaved;
     char *savedName;
 };
 
@@ -130,7 +102,7 @@ struct list_fonts_closure {
     FontNamesPtr names;
     struct list_font_state current;
     struct list_font_state saved;
-    Bool haveSaved;
+    bool haveSaved;
     char *savedName;
     int savedNameLen;
 };
@@ -331,18 +303,7 @@ doOpenFont(ClientPtr client, struct open_font_closure *c)
         ((screenInfo.bitmapBitOrder == LSBFirst) ?
          BitmapFormatBitOrderLSB : BitmapFormatBitOrderMSB) |
         BitmapFormatImageRectMin |
-#if GLYPHPADBYTES == 1
-        BitmapFormatScanlinePad8 |
-#endif
-#if GLYPHPADBYTES == 2
-        BitmapFormatScanlinePad16 |
-#endif
-#if GLYPHPADBYTES == 4
         BitmapFormatScanlinePad32 |
-#endif
-#if GLYPHPADBYTES == 8
-        BitmapFormatScanlinePad64 |
-#endif
         BitmapFormatScanlineUnit8;
 
     if (client->clientGone) {
@@ -548,9 +509,6 @@ CloseFont(void *value, XID fid)
         });
         if (pfont == defaultFont)
             defaultFont = NULL;
-#ifdef XF86BIGFONT
-        XF86BigfontFreeFontShm(pfont);
-#endif
         fpe = pfont->fpe;
         (*fpe_functions[fpe->type]->close_font) (fpe, pfont);
         FreeFPE(fpe);
@@ -630,7 +588,7 @@ doListFontsAndAliases(ClientPtr client, struct list_fonts_closure *c)
     int err = Successful;
     FontNamesPtr names = NULL;
     char *name, *resolved = NULL;
-    int namelen, resolvedlen;
+    int namelen, resolvedlen = 0;
     int aliascount = 0;
 
     if (client->clientGone) {
@@ -738,6 +696,10 @@ doListFontsAndAliases(ClientPtr client, struct list_fonts_closure *c)
                  * is BadFontName, indicating the alias resolution
                  * is complete.
                  */
+                if (resolvedlen > XLFDMAXFONTNAMELEN) {
+                    err = BadFontName;
+                    goto ContBadFontName;
+                }
                 memcpy(tmp_pattern, resolved, resolvedlen);
                 if (c->haveSaved) {
                     char *tmpname;
@@ -901,7 +863,7 @@ doListFontsWithInfo(ClientPtr client, struct list_fonts_with_info_closure *c)
 {
     FontPathElementPtr fpe;
     int err = Successful;
-    char *name;
+    char *name = NULL;
     int namelen = 0;
     int numFonts;
     FontInfoRec fontInfo, *pFontInfo;
@@ -961,6 +923,10 @@ doListFontsWithInfo(ClientPtr client, struct list_fonts_with_info_closure *c)
              * is BadFontName, indicating the alias resolution
              * is complete.
              */
+            if (!name) {
+                err = BadFontName;
+                goto ContBadFontName;
+            }
             if (c->haveSaved) {
                 char *tmpname;
                 int tmpnamelen;
@@ -984,6 +950,10 @@ doListFontsWithInfo(ClientPtr client, struct list_fonts_with_info_closure *c)
                 c->savedName = XNFalloc(namelen + 1);
                 memcpy(c->savedName, name, namelen + 1);
                 aliascount = 20;
+            }
+            if (namelen > XLFDMAXFONTNAMELEN) {
+                err = BadFontName;
+                goto ContBadFontName;
             }
             memmove(c->current.pattern, name, namelen);
             c->current.patlen = namelen;
@@ -1097,8 +1067,8 @@ doListFontsWithInfo(ClientPtr client, struct list_fonts_with_info_closure *c)
                     pby += 4;
                 }
             }
-            WriteToClient(client, length, reply);
-            WriteToClient(client, namelen, name);
+            dixWriteToClient(client, length, reply);
+            dixWriteToClient(client, namelen, name);
             if (pFontInfo == &fontInfo) {
                 free(fontInfo.props);
                 free(fontInfo.isStringProp);
@@ -1414,7 +1384,7 @@ doPolyText(ClientPtr client, struct poly_text_closure *c)
         err = c->err;
     if (err != Success && c->client != serverClient) {
 #ifdef XINERAMA
-        if (noPanoramiXExtension || !c->pGC->pScreen->myNum)
+        if (PanoramiXIsDisabled() || !c->pGC->pScreen->myNum)
 #endif /* XINERAMA */
             SendErrorToClient(c->client, c->reqType, 0, 0, err);
     }

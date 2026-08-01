@@ -21,7 +21,10 @@
  */
 #include <dix-config.h>
 
+#include <stdbool.h>
+
 #include "os/bug_priv.h"
+#include "os/mathx_priv.h"
 
 #include "glamor_priv.h"
 #include "glamor_program.h"
@@ -57,7 +60,7 @@ glamor_poly_fill_rect_gl(DrawablePtr drawable,
     GLshort *v;
     char *vbo_offset;
     int box_index;
-    Bool ret = FALSE;
+    bool ret = FALSE;
     BoxRec bounds = glamor_no_rendering_bounds();
 
     pixmap_priv = glamor_get_pixmap_private(pixmap);
@@ -141,10 +144,10 @@ glamor_poly_fill_rect_gl(DrawablePtr drawable,
 
         while (nbox--) {
             BoxRec scissor = {
-                .x1 = max(box->x1, bounds.x1 + drawable->x),
-                .y1 = max(box->y1, bounds.y1 + drawable->y),
-                .x2 = min(box->x2, bounds.x2 + drawable->x),
-                .y2 = min(box->y2, bounds.y2 + drawable->y),
+                .x1 = MAX(box->x1, bounds.x1 + drawable->x),
+                .y1 = MAX(box->y1, bounds.y1 + drawable->y),
+                .x2 = MIN(box->x2, bounds.x2 + drawable->x),
+                .y2 = MIN(box->y2, bounds.y2 + drawable->y),
             };
 
             box++;

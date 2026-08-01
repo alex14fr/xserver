@@ -66,7 +66,7 @@ typedef XID RRLease;
  * Modeline for a monitor. Name follows directly after this struct
  */
 
-#define RRModeName(pMode) ((char *) (pMode + 1))
+#define RRModeName(pMode) ((char *) ((pMode) + 1))
 typedef struct _rrMode RRModeRec, *RRModePtr;
 typedef struct _rrPropertyValue RRPropertyValueRec, *RRPropertyValuePtr;
 typedef struct _rrProperty RRPropertyRec, *RRPropertyPtr;
@@ -196,7 +196,6 @@ struct _rrLease {
     RROutputPtr *outputs;
 };
 
-#if RANDR_12_INTERFACE
 typedef Bool (*RRScreenSetSizeProcPtr) (ScreenPtr pScreen,
                                         CARD16 width,
                                         CARD16 height,
@@ -228,8 +227,6 @@ typedef Bool (*RROutputValidateModeProcPtr) (ScreenPtr pScreen,
                                              RRModePtr mode);
 
 typedef void (*RRModeDestroyProcPtr) (ScreenPtr pScreen, RRModePtr mode);
-
-#endif
 
 #if RANDR_13_INTERFACE
 typedef Bool (*RROutputGetPropertyProcPtr) (ScreenPtr pScreen,
@@ -326,7 +323,6 @@ typedef struct _rrScrPriv {
      */
     RRSetConfigProcPtr rrSetConfig;
     RRGetInfoProcPtr rrGetInfo;
-#if RANDR_12_INTERFACE
     RRScreenSetSizeProcPtr rrScreenSetSize;
     RRCrtcSetProcPtr rrCrtcSet;
     RRCrtcSetGammaProcPtr rrCrtcSetGamma;
@@ -334,7 +330,6 @@ typedef struct _rrScrPriv {
     RROutputSetPropertyProcPtr rrOutputSetProperty;
     RROutputValidateModeProcPtr rrOutputValidateMode;
     RRModeDestroyProcPtr rrModeDestroy;
-#endif
 #if RANDR_13_INTERFACE
     RROutputGetPropertyProcPtr rrOutputGetProperty;
     RRGetPanningProcPtr rrGetPanning;
@@ -410,9 +405,7 @@ typedef struct _rrScrPriv {
     RRRequestLeaseProcPtr rrRequestLease;
     RRGetLeaseProcPtr rrGetLease;
 
-#if RANDR_12_INTERFACE
     RRCrtcGetProcPtr rrCrtcGet;
-#endif
 } rrScrPrivRec, *rrScrPrivPtr;
 
 extern _X_EXPORT DevPrivateKeyRec rrPrivKeyRec;
@@ -420,8 +413,8 @@ extern _X_EXPORT DevPrivateKeyRec rrPrivKeyRec;
 #define rrPrivKey (&rrPrivKeyRec)
 
 #define rrGetScrPriv(pScr)  ((rrScrPrivPtr)dixLookupPrivate(&(pScr)->devPrivates, rrPrivKey))
-#define rrScrPriv(pScr)	rrScrPrivPtr    pScrPriv = rrGetScrPriv(pScr)
-#define SetRRScreen(s,p) dixSetPrivate(&(s)->devPrivates, rrPrivKey, p)
+#define rrScrPriv(pScr)	rrScrPrivPtr    pScrPriv = rrGetScrPriv((pScr))
+#define SetRRScreen(s,p) dixSetPrivate(&(s)->devPrivates, rrPrivKey, (p))
 
 /*
  * each window has a list of clients requesting
@@ -452,7 +445,6 @@ typedef struct _RRClient {
 /*  RRTimesRec	times[0]; */
 } RRClientRec, *RRClientPtr;
 
-#ifdef RANDR_12_INTERFACE
 /*
  * Set the range of sizes for the screen
  */
@@ -461,7 +453,6 @@ extern _X_EXPORT void
 RRScreenSetSizeRange(ScreenPtr pScreen,
                      CARD16 minWidth,
                      CARD16 minHeight, CARD16 maxWidth, CARD16 maxHeight);
-#endif
 
 /* rrscreen.c */
 /*

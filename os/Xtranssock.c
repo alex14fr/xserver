@@ -104,7 +104,7 @@ from the copyright holders.
 #endif /* !NO_TCP_H */
 
 #include <sys/ioctl.h>
-#if defined(SVR4) || defined(__SVR4)
+#ifdef HAVE_SYS_FILIO_H
 #include <sys/filio.h>
 #endif
 
@@ -610,25 +610,29 @@ static int
 set_sun_path(const char *port, const char *upath, char *path, int abstract)
 {
     struct sockaddr_un s;
-    ssize_t maxlen = sizeof(s.sun_path) - 1;
     const char *at = "";
+    int n;
 
-    if (!port || !*port || !path)
+    if (!port || !*port || !path) {
 	return -1;
+    }
 
 #ifdef HAVE_ABSTRACT_SOCKETS
-    if (port[0] == '@')
+    if (port[0] == '@') {
 	upath = "";
-    else if (abstract)
+    } else if (abstract) {
 	at = "@";
+    }
 #endif
 
-    if (*port == '/') /* a full pathname */
+    if (*port == '/') { /* a full pathname */
 	upath = "";
+    }
 
-    if ((ssize_t)(strlen(at) + strlen(upath) + strlen(port)) > maxlen)
+    n = snprintf(path, sizeof(s.sun_path), "%s%s%s", at, upath, port);
+    if (n < 0 || (size_t) n >= sizeof(s.sun_path)) {
 	return -1;
-    snprintf(path, sizeof(s.sun_path), "%s%s%s", at, upath, port);
+    }
     return 0;
 }
 #endif
@@ -717,9 +721,6 @@ static int _XSERVTransSocketINETCreateListener (
     SOCKLEN_T	namelen = sizeof(sockname);
     int		status;
     long	tmpport;
-#ifdef XTHREADS_NEEDS_BYNAMEPARAMS
-    _Xgetservbynameparams sparams;
-#endif
     struct servent *servp;
 
     char	portbuf[PORTBUFSIZE];
@@ -790,7 +791,7 @@ static int _XSERVTransSocketINETCreateListener (
 #ifdef IPv6
 	namelen = sizeof (struct sockaddr_in6);
 #ifdef SIN6_LEN
-	((struct sockaddr_in6 *)&sockname)->sin6_len = sizeof(sockname);
+	((struct sockaddr_in6 *)&sockname)->sin6_len = namelen;
 #endif
 	((struct sockaddr_in6 *)&sockname)->sin6_family = AF_INET6;
 	((struct sockaddr_in6 *)&sockname)->sin6_port = htons(sport);

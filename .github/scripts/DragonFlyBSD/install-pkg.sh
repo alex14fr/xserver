@@ -1,9 +1,34 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Enrico Weigelt, metux IT consult <info@metux.net>
 
 set -e
 
+# Retry a command a few times with linear backoff. pkg mirrors flake
+# transiently (catalogue refresh / package fetch), and a single network
+# hiccup must not abort the whole CI run.
+retry() {
+    n=0
+    max=3
+    while true; do
+        n=$((n + 1))
+        if "$@"; then
+            return 0
+        fi
+        if [ "$n" -ge "$max" ]; then
+            echo "--> '$*' failed after $max attempts" >&2
+            return 1
+        fi
+        echo "--> '$*' failed (attempt $n/$max), retrying in $((n * 10))s ..." >&2
+        sleep $((n * 10))
+    done
+}
+
+echo "--> refresh package catalogue"
+retry pkg update -f
+
 echo "--> install extra dependencies"
-pkg install -y \
+retry pkg install -y \
     curl \
     libdrm \
     libepoll-shim \

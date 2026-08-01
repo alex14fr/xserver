@@ -29,6 +29,7 @@
 
 #include "dix-config.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -36,7 +37,8 @@
 
 #include "dix/dix_priv.h"
 #include "os/fmt.h"
-#include "present/present_priv.h"
+#include "os/mathx_priv.h"
+#include "Xext/present/present_priv.h"
 
 #include "inputstr.h"
 #include "xf86str.h"
@@ -57,9 +59,6 @@
 #include <X11/extensions/dpmsconst.h>
 
 #include "driver.h"
-
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #ifndef GBM_BO_USE_FRONT_RENDERING
 #define GBM_BO_USE_FRONT_RENDERING 0
@@ -1887,7 +1886,14 @@ drmmode_paint_cursor(struct gbm_bo *cursor_bo, int cursor_pitch, int cursor_widt
 
     const CARD32 *src = image + src_y * image_width + src_x;
     for (int i = 0; i < height_todo; i++) {
-        memcpy(cursor + i * cursor_pitch, src + i * image_width, width_todo * sizeof(*cursor));    /* cpu_to_le32(image[i]); */
+#if X_BYTE_ORDER == X_LITTLE_ENDIAN
+        memcpy(cursor + i * cursor_pitch, src + i * image_width, width_todo * sizeof(*cursor));    /* cpu_to_gpu32(image[i]); */
+#else
+        CARD32 *dst = cursor + i * cursor_pitch;
+        for (int j = 0; j < width_todo; j++) {
+            dst[j] = bswap_32(src[i * image_width + j]); /* cpu_to_gpu32(image[i * image_width + j]); */
+        }
+#endif
     }
 }
 
@@ -3117,12 +3123,12 @@ drmmode_output_add_gtf_modes(xf86OutputPtr output, DisplayModePtr Modes)
     for (m = Modes; m; m = m->next) {
         if (m->type & M_T_PREFERRED)
             preferred = m;
-        max_x = max(max_x, m->HDisplay);
-        max_y = max(max_y, m->VDisplay);
-        max_vrefresh = max(max_vrefresh, xf86ModeVRefresh(m));
+        max_x = MAX(max_x, m->HDisplay);
+        max_y = MAX(max_y, m->VDisplay);
+        max_vrefresh = MAX(max_vrefresh, xf86ModeVRefresh(m));
     }
 
-    max_vrefresh = max(max_vrefresh, 60.0);
+    max_vrefresh = MAX(max_vrefresh, 60.0);
     max_vrefresh *= (1 + SYNC_TOLERANCE);
 
     m = xf86GetDefaultModes();

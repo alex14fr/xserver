@@ -25,6 +25,8 @@
 
 #include <dix-config.h>
 
+#include <stdbool.h>
+
 #include "dix/dix_priv.h"
 #include "dix/dixgrabs_priv.h"
 #include "dix/eventconvert.h"
@@ -40,7 +42,7 @@
 #include "scrnintstr.h"
 #include "eventstr.h"
 #include "exevents.h"
-#include "exglobals.h"
+#include "Xext/xinput/exglobals.h"
 #include "windowstr.h"
 
 #define GESTURE_HISTORY_SIZE 100
@@ -214,8 +216,8 @@ GestureAddGrabListener(DeviceIntPtr dev, GestureInfoPtr gi, GrabPtr grab)
 static void
 GestureAddPassiveGrabListener(DeviceIntPtr dev, GestureInfoPtr gi, WindowPtr win, InternalEvent *ev)
 {
-    Bool activate = FALSE;
-    Bool check_core = FALSE;
+    bool activate = FALSE;
+    bool check_core = FALSE;
 
     GrabPtr grab = CheckPassiveGrabsOnWindow(win, dev, ev, check_core,
                                              activate);

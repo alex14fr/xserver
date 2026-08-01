@@ -44,6 +44,7 @@ from The Open Group.
 #include "mi/mipointer_priv.h"
 #include "os/cmdline.h"
 #include "os/ddx_priv.h"
+#include "os/mathx_priv.h"
 #include "os/osdep.h"
 #include "os/xhostname.h"
 
@@ -161,12 +162,12 @@ static char *render_node = NULL;
 #endif
 
 #define swapcopy16(_dst, _src) \
-    if (needswap) { CARD16 _s = _src; cpswaps(_s, _dst); } \
-    else _dst = _src;
+    if (needswap) { CARD16 _s = (_src); cpswaps(_s, (_dst)); } \
+    else (_dst) = (_src);
 
 #define swapcopy32(_dst, _src) \
-    if (needswap) { CARD32 _s = _src; cpswapl(_s, _dst); } \
-    else _dst = _src;
+    if (needswap) { CARD32 _s = (_src); cpswapl(_s, (_dst)); } \
+    else (_dst) = (_src);
 
 static void
 vfbAddCrtcInfo(vfbScreenInfoPtr screen, int numCrtcs)
@@ -276,13 +277,11 @@ ddxGiveUp(enum ExitCode error)
     }
 }
 
-void
-OsVendorInit(void)
+void ddxInit(void)
 {
 }
 
-void
-OsVendorFatalError(const char *f, va_list args)
+void ddxFatalError(const char *f, va_list args)
 {
 }
 
@@ -448,7 +447,7 @@ ddxProcessArgument(int argc, char *argv[], int i)
 
     if (strcmp(argv[i], "-dri") == 0) {
         if (i + 1 < argc) {
-            render_node = strdup(argv[i + 1]);
+            render_node = argv[i + 1];
             return 2;
         }
         UseMsg();
@@ -610,7 +609,7 @@ vfbAllocateMmappedFramebuffer(vfbScreenInfoPtr pvfb)
     for (currentFileSize = 0;
          currentFileSize < pvfb->sizeInBytes;
          currentFileSize += writeThisTime) {
-        writeThisTime = min(DUMMY_BUFFER_SIZE,
+        writeThisTime = MIN(DUMMY_BUFFER_SIZE,
                             pvfb->sizeInBytes - currentFileSize);
         if (-1 == write(pvfb->mmap_fd, dummyBuffer, writeThisTime)) {
             perror("write");
@@ -829,8 +828,6 @@ vfbCloseScreen(ScreenPtr pScreen)
     if (pvfb->dri_fd >= 0) {
         close(pvfb->dri_fd);
         pvfb->dri_fd = -1;
-        free(render_node);
-        render_node = NULL;
     }
 #endif
 
@@ -964,7 +961,6 @@ vfbRandRInit(ScreenPtr pScreen)
 {
     rrScrPrivPtr pScrPriv;
 
-#if RANDR_12_INTERFACE
     RRModePtr mode;
     RRCrtcPtr crtc;
     RROutputPtr output;
@@ -972,14 +968,12 @@ vfbRandRInit(ScreenPtr pScreen)
     char name[64];
     int i;
     vfbScreenInfoPtr pvfb = &vfbScreens[pScreen->myNum];
-#endif
     int mmWidth, mmHeight;
 
     if (!RRScreenInit(pScreen))
         return FALSE;
     pScrPriv = rrGetScrPriv(pScreen);
     pScrPriv->rrGetInfo = vfbRRGetInfo;
-#if RANDR_12_INTERFACE
     pScrPriv->rrCrtcSet = vfbRRCrtcSet;
     pScrPriv->rrScreenSetSize = vfbRRScreenSetSize;
     pScrPriv->rrOutputSetProperty = NULL;
@@ -1036,7 +1030,6 @@ vfbRandRInit(ScreenPtr pScreen)
                 return FALSE;
         }
     }
-#endif
     return TRUE;
 }
 

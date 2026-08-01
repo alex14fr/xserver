@@ -35,6 +35,7 @@
  */
 #include <xorg-config.h>
 
+#include <assert.h>
 #include <sys/stat.h>
 #include <X11/X.h>
 
@@ -44,6 +45,7 @@
 #include "include/xf86DDC.h"
 #include "mi/mi_priv.h"
 #include "os/log_priv.h"
+#include "os/mathx_priv.h"
 #include "os/osdep.h"
 
 #include "os.h"
@@ -62,12 +64,6 @@
 #include "xf86InPriv.h"
 #include "xf86Config.h"
 #include "xf86Module_priv.h"
-
-/* For xf86GetClocks */
-#if defined(CSRG_BASED) || defined(__GNU__)
-#define HAS_SETPRIORITY
-#include <sys/resource.h>
-#endif
 
 static int xf86ScrnInfoPrivateCount = 0;
 
@@ -349,8 +345,8 @@ xf86AddPixFormat(ScrnInfoPtr pScrn, int depth, int bpp, int pad)
  */
 
 /* Can the screen handle 32 bpp pixmaps */
-#define DO_PIX32(f) ((f & Support32bppFb) || \
-		     ((f & Support24bppFb) && (f & SupportConvert32to24)))
+#define DO_PIX32(f) (((f) & Support32bppFb) || \
+		     (((f) & Support24bppFb) && ((f) & SupportConvert32to24)))
 
 #ifndef GLOBAL_DEFAULT_DEPTH
 #define GLOBAL_DEFAULT_DEPTH 24
@@ -1361,7 +1357,7 @@ xf86GetVisualName(int visual)
 int
 xf86GetVerbosity(void)
 {
-    return max(xf86Verbose, xf86LogVerbose);
+    return MAX(xf86Verbose, xf86LogVerbose);
 }
 
 Gamma

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Enrico Weigelt, metux IT consult <info@metux.net>
 
 set -e
 
@@ -7,13 +9,14 @@ EPHEMERAL="
 	libexpat-dev
 	libgles2-mesa-dev
 	libxkbcommon-dev
+	python3-pytest
+	python3-pytest-timeout
+	python3-pytest-xdist
 	x11-utils
 	x11-xserver-utils
 	xauth
 	xvfb
 "
-
-apt-get update
 
 apt-get install -y \
 	$EPHEMERAL \
@@ -38,7 +41,6 @@ apt-get install -y \
 	libglx-mesa0 \
 	libinput10 \
 	libinput-dev \
-	libnvidia-egl-wayland-dev \
 	libpciaccess-dev \
 	libpixman-1-dev \
 	libspice-protocol-dev \
@@ -96,7 +98,5 @@ apt-get install -y \
 	python3-mako \
 	libxcvt-dev \
 	git \
+	golang-go \
 	sudo
-
-# only pull them into apt cache -- for mingw32 build
-apt-get install -d -y mingw-w64-tools gcc-mingw-w64 gcc-mingw-w64-i686 libz-mingw-w64-dev

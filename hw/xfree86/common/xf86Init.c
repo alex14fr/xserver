@@ -59,7 +59,10 @@
 #include "os/ddx_priv.h"
 #include "os/log_priv.h"
 #include "os/osdep.h"
-#include "randr/randrstr_priv.h"
+#ifdef DPMSExtension
+#include "Xext/dpms/dpms_priv.h"
+#endif
+#include "Xext/randr/randrstr_priv.h"
 
 #include "servermd.h"
 #include "windowstr.h"
@@ -89,7 +92,6 @@
 
 #ifdef DPMSExtension
 #include <X11/extensions/dpmsconst.h>
-#include "dpmsproc.h"
 #endif
 
 #ifdef __linux__
@@ -752,14 +754,7 @@ CloseInput(void)
     LoaderClose();
 }
 
-/*
- * OsVendorInit --
- *      OS/Vendor-specific initialisations.  Called from OsInit(), which
- *      is called by dix before establishing the well known sockets.
- */
-
-void
-OsVendorInit(void)
+void ddxInit(void)
 {
     static Bool beenHere = FALSE;
 
@@ -858,7 +853,7 @@ ddxGiveUp(enum ExitCode error)
 }
 
 void
-OsVendorFatalError(const char *f, va_list args)
+ddxFatalError(const char *f, va_list args)
 {
     ErrorF("\nPlease consult the XLibre support: https://www.xlibre.net/\n");
     if (xf86LogFile && xf86LogFileWasOpened)

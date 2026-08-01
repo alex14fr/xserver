@@ -65,13 +65,14 @@ SOFTWARE.
 #include "dix/request_priv.h"
 #include "dix/resource_priv.h"
 #include "dix/screenint_priv.h"
+#include "include/misc.h"
 #include "mi/mi_priv.h"
 #include "os/bug_priv.h"
 #include "os/log_priv.h"
+#include "os/mathx_priv.h"
 #include "os/osdep.h"
-#include "xkb/xkbsrv_priv.h"
+#include "Xext/xkeyboard/xkbsrv_priv.h"
 
-#include "misc.h"
 #include "resource.h"
 #include "windowstr.h"
 #include "inputstr.h"
@@ -84,13 +85,13 @@ SOFTWARE.
 #include "swaprep.h"
 #include "mipointer.h"
 #include "eventstr.h"
-#include "exglobals.h"
-#include "xiquerydevice.h"      /* for SizeDeviceClasses */
-#include "xiproperty.h"
+#include "Xext/xinput/exglobals.h"
+#include "Xext/xinput/xiquerydevice.h"      /* for SizeDeviceClasses */
+#include "Xext/xinput/xiproperty.h"
 #include "enterleave.h"         /* for EnterWindow() */
 #include "xserver-properties.h"
-#include "xichangehierarchy.h"  /* For XISendDeviceHierarchyEvent */
-#include "syncsrv.h"
+#include "Xext/xinput/xichangehierarchy.h"  /* For XISendDeviceHierarchyEvent */
+#include "Xext/sync/syncsrv.h"
 
 /** @file
  * This file handles input device-related stuff.
@@ -1139,8 +1140,9 @@ UndisplayDevices(void)
 {
     ScreenPtr masterScreen = dixGetMasterScreen();
 
-    for (DeviceIntPtr dev = inputInfo.devices; dev; dev = dev->next)
-        masterScreen->DisplayCursor(dev, masterScreen, NullCursor);
+    for (DeviceIntPtr dev = inputInfo.devices; dev; dev = dev->next) {
+        dixScreenRaiseDisplayCursor(masterScreen, dev, NullCursor);
+    }
 }
 
 static int
@@ -1190,7 +1192,7 @@ RemoveDevice(DeviceIntPtr dev, BOOL sendevent)
     if (initialized) {
         if (DevHasCursor(dev)) {
             ScreenPtr masterScreen = dixGetMasterScreen();
-            masterScreen->DisplayCursor(dev, masterScreen, NullCursor);
+            dixScreenRaiseDisplayCursor(masterScreen, dev, NullCursor);
         }
 
         DisableDevice(dev, sendevent);
@@ -1294,18 +1296,15 @@ InitButtonClassDeviceStruct(DeviceIntPtr dev, int numButtons, Atom *labels,
 ValuatorClassPtr
 AllocValuatorClass(ValuatorClassPtr src, int numAxes)
 {
-    ValuatorClassPtr v;
-
     /* force alignment with double */
     union align_u {
         ValuatorClassRec valc;
         double d;
-    } *align;
-    int size;
+    };
 
-    size =
+    int size =
         sizeof(union align_u) + numAxes * (sizeof(double) + sizeof(AxisInfo));
-    align = (union align_u *) realloc(src, size);
+    union align_u *align = (union align_u *) realloc(src, size);
 
     if (!align)
         return NULL;
@@ -1313,7 +1312,7 @@ AllocValuatorClass(ValuatorClassPtr src, int numAxes)
     if (!src)
         memset(align, 0, size);
 
-    v = &align->valc;
+    ValuatorClassPtr v = &align->valc;
     v->numAxes = numAxes;
     v->axisVal = (double *) (align + 1);
     v->axes = (AxisInfoPtr) (v->axisVal + numAxes);
@@ -2446,7 +2445,7 @@ RecalculateMasterButtons(DeviceIntPtr slave)
             GetMaster(dev, MASTER_ATTACHED) != master || !dev->button)
             continue;
 
-        maxbuttons = max(maxbuttons, dev->button->numButtons);
+        maxbuttons = MAX(maxbuttons, dev->button->numButtons);
     }
 
     if (master->button && master->button->numButtons != maxbuttons) {

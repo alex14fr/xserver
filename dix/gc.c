@@ -52,9 +52,9 @@ SOFTWARE.
 #include <X11/Xproto.h>
 
 #include "dix/gc_priv.h"
+#include "include/misc.h"
 #include "os/osdep.h"
 
-#include "misc.h"
 #include "resource.h"
 #include "gcstruct.h"
 #include "pixmapstr.h"
@@ -113,11 +113,11 @@ ValidateGC(DrawablePtr pDraw, GCPtr pGC)
  */
 
 #define NEXTVAL(_type, _var) { \
-	_var = (_type)(pUnion->val); pUnion++; \
+	(_var) = (_type)(pUnion->val); pUnion++; \
     }
 
 #define NEXT_PTR(_type, _var) { \
-    _var = (_type)pUnion->ptr; pUnion++; }
+    (_var) = (_type)pUnion->ptr; pUnion++; }
 
 int
 ChangeGC(ClientPtr client, GCPtr pGC, BITS32 mask, ChangeGCValPtr pUnion)

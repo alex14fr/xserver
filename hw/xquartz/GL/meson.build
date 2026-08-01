@@ -1,5 +1,6 @@
 libcglcore = static_library('CGLCore',
      ['indirect.c', 'capabilities.c', 'visualConfigs.c'],
-     include_directories: [inc, glx_inc, '..', '../xpr'],
+     c_args: ['-DGL_SILENCE_DEPRECATION'],
+     include_directories: [inc, '..', '../xpr'],
      dependencies: [xproto_dep, pixman_dep],
 )

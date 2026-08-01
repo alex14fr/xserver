@@ -51,8 +51,9 @@ fbdevInitialize(KdCardInfo * card, FbdevPriv * priv)
                    card->mynum, config->fbdevDevicePath);
     } else {
         char devbuf[] = "/dev/fbxx";
-        priv->fd = -1;
-        for (int i = 0; i < 32 && priv->fd < 0; i++) {
+        memcpy(devbuf, "/dev/fb", sizeof("/dev/fb"));
+        priv->fd = open("/dev/fb", O_RDWR);
+        for (int i = 0; i < 32 && (priv->fd < 0); i++) {
             snprintf(devbuf, sizeof(devbuf),
                      "/dev/fb%d", i);
             priv->fd = open(devbuf, O_RDWR);
@@ -81,6 +82,9 @@ fbdevInitialize(KdCardInfo * card, FbdevPriv * priv)
         close(priv->fd);
         return FALSE;
     }
+
+    LogMessage(X_INFO, "Xfbdev(%d): Framebuffer device id: %s\n", card->mynum, priv->fix.id);
+
     /* quiet valgrind */
     memset(&priv->var, '\0', sizeof(priv->var));
     if (ioctl(priv->fd, FBIOGET_VSCREENINFO, &priv->var) < 0) {
@@ -143,6 +147,31 @@ fbdevModeSupported(KdScreenInfo * screen, const KdMonitorTiming * t)
     return TRUE;
 }
 
+static int
+fbdevGetRefreshRate(const struct fb_var_screeninfo *var)
+{
+#define PICOS2HZ(a) (1.0e12/(a))
+    long scanline = var->left_margin + var->xres + var->right_margin + var->hsync_len;
+    long v_total = var->upper_margin + var->yres + var->lower_margin + var->vsync_len;
+    long vblank = v_total * scanline * var->pixclock;
+
+    long rate = vblank ? PICOS2HZ(vblank) : -1;
+
+    /* Make sure the rate is reasonable */
+    if (rate > 0 && rate <= 1000) {
+        return rate;
+    }
+
+    /**
+     * We could probe the refresh rate by doing FBIO_WAITFORVSYNC,
+     * measuring the time between them, and matching that to a list of common rates.
+     * However, if the rate reported by the driver is wrong, the driver probably doesn't care about
+     * refresh rates.
+     */
+    return -1;
+#undef PICOS2HZ
+}
+
 static void
 fbdevConvertMonitorTiming(const KdMonitorTiming * t,
                           struct fb_var_screeninfo *var)
@@ -173,15 +202,93 @@ fbdevConvertMonitorTiming(const KdMonitorTiming * t,
 }
 
 static Bool
+fbdevSetMode(KdScreenInfo *screen, const KdMonitorTiming *t)
+{
+    FbdevPriv *priv = screen->card->driver;
+    struct fb_var_screeninfo var = {0};
+    int depth;
+    int k;
+
+    k = ioctl(priv->fd, FBIOGET_VSCREENINFO, &var);
+
+    screen->rate = t->rate;
+    screen->width = t->horizontal;
+    screen->height = t->vertical;
+
+    if (k < 0 || (t->horizontal != var.xres) || (t->vertical != var.yres)) {
+        fbdevConvertMonitorTiming(t, &var);
+    }
+
+    var.activate = FB_ACTIVATE_NOW;
+    var.bits_per_pixel = screen->fb.depth;
+    var.nonstd = 0;
+    var.grayscale = 0;
+
+    k = ioctl(priv->fd, FBIOPUT_VSCREENINFO, &var);
+    if (k < 0) {
+        LogMessage(X_ERROR, "Xfbdev(%d): FBIOPUT_VSCREENINFO: %s\n",
+                   screen->card->mynum, strerror(errno));
+    }
+
+    /* Re-get the "fixed" parameters since they might have changed */
+    k = ioctl(priv->fd, FBIOGET_FSCREENINFO, &priv->fix);
+    if (k < 0) {
+        LogMessage(X_ERROR, "Xfbdev(%d): FBIOGET_FSCREENINFO: %s\n",
+                   screen->card->mynum, strerror(errno));
+    }
+
+    /* Now get the new screeninfo */
+    k = ioctl(priv->fd, FBIOGET_VSCREENINFO, &priv->var);
+    if (k >= 0) {
+        /* Just because the ioctl didn't fail, it doesn't mean we could set the mode */
+        LogMessage(X_INFO, "Xfbdev(%d): Current screen mode: width = %d, height = %d\n",
+                   screen->card->mynum, priv->var.xres, priv->var.yres);
+    }
+
+    depth = priv->var.bits_per_pixel;
+
+    /* Calculate fix.line_length if it's zero */
+    if (!priv->fix.line_length)
+        priv->fix.line_length = (priv->var.xres_virtual * depth + 7) / 8;
+
+    return (k >= 0) && (t->horizontal == priv->var.xres) && (t->vertical == var.yres);
+}
+
+static void
+fbdevConvertVarToTiming(const struct fb_var_screeninfo *var,
+                        KdMonitorTiming * t)
+{
+
+    t->horizontal = var->xres;
+    t->vertical = var->yres;
+    t->clock = var->pixclock ? 1000000000 / var->pixclock : 0;
+    t->hbp = var->left_margin;
+    t->hfp = var->right_margin;
+    t->vbp = var->upper_margin;
+    t->vfp = var->lower_margin;
+    t->hblank = var->hsync_len + t->hfp + t->hbp;
+    t->vblank = var->vsync_len + t->vfp + t->vbp;
+
+    t->rate = fbdevGetRefreshRate(var);
+
+    t->hpol = (var->sync & FB_SYNC_HOR_HIGH_ACT) ? KdSyncPositive : KdSyncNegative;
+    t->vpol = (var->sync & FB_SYNC_VERT_HIGH_ACT) ? KdSyncPositive : KdSyncNegative;
+}
+
+static Bool
 fbdevScreenInitialize(KdScreenInfo * screen, FbdevScrPriv * scrpriv)
 {
     FbdevPriv *priv = screen->card->driver;
     Pixel allbits;
     int depth;
+    int rate;
+    Bool want_rate = FALSE;
     Bool gray;
     struct fb_var_screeninfo var;
     const KdMonitorTiming *t;
     int k;
+
+#define FB_DEFAULT_RATE 120 /* The highest rate in the modelist from kmode.c */
 
     k = ioctl(priv->fd, FBIOGET_VSCREENINFO, &var);
 
@@ -189,12 +296,18 @@ fbdevScreenInitialize(KdScreenInfo * screen, FbdevScrPriv * scrpriv)
         if (k >= 0) {
             screen->width = var.xres;
             screen->height = var.yres;
-        }
-        else {
+        } else {
             screen->width = 1024;
             screen->height = 768;
         }
-        screen->rate = 103;     /* FIXME: should get proper value from fb driver */
+    }
+    if (!screen->rate) {
+        screen->rate = (k >= 0) ? fbdevGetRefreshRate(&var) : FB_DEFAULT_RATE;
+        if (screen->rate <= 0) {
+            screen->rate = FB_DEFAULT_RATE;
+        }
+    } else {
+        want_rate = TRUE;
     }
     if (!screen->fb.depth) {
         if (k >= 0)
@@ -203,51 +316,69 @@ fbdevScreenInitialize(KdScreenInfo * screen, FbdevScrPriv * scrpriv)
             screen->fb.depth = 16;
     }
 
-    if ((screen->width != var.xres) || (screen->height != var.yres)) {
-        t = KdFindMode(screen, fbdevModeSupported);
-        screen->rate = t->rate;
-        screen->width = t->horizontal;
-        screen->height = t->vertical;
+    scrpriv->max_width = 0;
+    scrpriv->max_height = 0;
 
-        /* Now try setting the mode */
-        if (k < 0 || (t->horizontal != var.xres || t->vertical != var.yres))
-            fbdevConvertMonitorTiming(t, &var);
+    if (k >= 0) {
+        KdMonitorTiming curr_mode = {0};
+
+        int saved_width = screen->width;
+        int saved_height = screen->height;
+
+        scrpriv->max_width = var.xres;
+        scrpriv->max_height = var.yres;
+
+        /* See if the current size is known */
+        screen->width = var.xres;
+        screen->height = var.yres;
+        rate = KdFindRate(screen, fbdevModeSupported);
+        screen->width = saved_width;
+        screen->height = saved_height;
+
+        /* Add the current framebuffer mode */
+        fbdevConvertVarToTiming(&var, &curr_mode);
+        if (curr_mode.rate > 0) {
+            KdAddMode(&curr_mode);
+        } else if (!rate) {
+            KdAddModeCVT(var.xres, var.yres, screen->rate);
+        }
     }
 
-    var.activate = FB_ACTIVATE_NOW;
-    var.bits_per_pixel = screen->fb.depth;
-    var.nonstd = 0;
-    var.grayscale = 0;
-
-    LogMessage(X_INFO, "Xfbdev(%d): Desired screen mode: width = %d, height = %d\n",
-               screen->card->mynum, var.xres, var.yres);
-
-    k = ioctl(priv->fd, FBIOPUT_VSCREENINFO, &var);
-
-    if (k < 0) {
-        LogMessage(X_ERROR, "Xfbdev(%d): FBIOPUT_VSCREENINFO: %s\n",
-                   screen->card->mynum, strerror(errno));
-        return FALSE;
+    rate = KdFindRate(screen, fbdevModeSupported);
+    if (!rate || want_rate || (k < 0) || (screen->width != var.xres) || (screen->height != var.yres)) {
+        /* Add the desired framebuffer mode */
+        KdAddModeCVT(screen->width, screen->height, screen->rate);
     }
 
-    /* Re-get the "fixed" parameters since they might have changed */
-    k = ioctl(priv->fd, FBIOGET_FSCREENINFO, &priv->fix);
-    if (k < 0)
-        LogMessage(X_ERROR, "Xfbdev(%d): FBIOGET_FSCREENINFO: %s\n",
-                   screen->card->mynum, strerror(errno));
+    /* Fbdev rate isn't reliable, don't forbid modes based on it */
+    if (!want_rate && (screen->rate < rate)) {
+        screen->rate = rate;
+    }
 
-    /* Now get the new screeninfo */
-    ioctl(priv->fd, FBIOGET_VSCREENINFO, &priv->var);
+    t = KdFindMode(screen, fbdevModeSupported);
+
+    /**
+     * XXX The only way we can check what modes are supported is by actually setting them.
+     *
+     * We save the video card mode, probe the mode by setting it, and restore the video card mode.
+     * The probed video move will be set by fbdevEnable.
+     */
+
+    /* KdTuneMode calls fbdevSetMode, which sets priv->fix, priv->var */
+    fbdevPreserve(screen->card);
+    KdTuneMode(screen, t, fbdevSetMode, fbdevModeSupported);
+    fbdevRestore(screen->card);
+
+    if (scrpriv->max_width < screen->width) {
+        scrpriv->max_width = screen->width;
+    }
+
+    if (scrpriv->max_height < screen->height) {
+        scrpriv->max_height = screen->height;
+    }
+
     depth = priv->var.bits_per_pixel;
     gray = priv->var.grayscale;
-
-    /* Just because the ioctl didn't fail, it doesn't mean we could set the mode */
-    LogMessage(X_INFO, "Xfbdev(%d): Actual screen mode: width = %d, height = %d\n",
-               screen->card->mynum, priv->var.xres, priv->var.yres);
-
-    /* Calculate fix.line_length if it's zero */
-    if (!priv->fix.line_length)
-        priv->fix.line_length = (priv->var.xres_virtual * depth + 7) / 8;
 
     switch (priv->fix.visual) {
     case FB_VISUAL_MONO01:
@@ -438,6 +569,20 @@ fbdevSetScreenSizes(ScreenPtr pScreen)
     }
 }
 
+static void
+fbdevClearFramebuffer(KdScreenInfo * screen)
+{
+#if 0 /* XXX Does not work reliably XXX */
+    FbdevPriv *priv = screen->card->driver;
+    memset(priv->fb_base, 0, priv->fix.smem_len);
+    volatile char *clear_me = (volatile char*)priv->fb_base;
+    for (int i = 0; i < priv->fix.smem_len; i++, clear_me[i] = 0);
+#else
+    kdOsFuncs->Disable();
+    kdOsFuncs->Enable();
+#endif
+}
+
 static Bool
 fbdevUnmapFramebuffer(KdScreenInfo * screen)
 {
@@ -552,12 +697,27 @@ fbdevSetShadow(ScreenPtr pScreen)
 
 #ifdef RANDR
 static Bool
+fbdevRandrModeSupported(ScreenPtr pScreen, const KdMonitorTiming *t)
+{
+    KdScreenPriv(pScreen);
+    KdScreenInfo *screen = pScreenPriv->screen;
+    FbdevScrPriv *scrpriv = screen->driver;
+
+    return (t->horizontal <= scrpriv->max_width) && (t->vertical <= scrpriv->max_height);
+}
+
+static Bool
+fbdevRandrModeChangeSupported(ScreenPtr pScreen, const KdMonitorTiming *t)
+{
+    return TRUE;
+}
+
+static Bool
 fbdevRandRGetInfo(ScreenPtr pScreen, Rotation * rotations)
 {
     KdScreenPriv(pScreen);
     KdScreenInfo *screen = pScreenPriv->screen;
     FbdevScrPriv *scrpriv = screen->driver;
-    RRScreenSizePtr pSize;
     Rotation randr;
     int n;
 
@@ -569,15 +729,9 @@ fbdevRandRGetInfo(ScreenPtr pScreen, Rotation * rotations)
     if (n == pScreen->numDepths)
         return FALSE;
 
-    pSize = RRRegisterSize(pScreen,
-                           screen->width,
-                           screen->height, screen->width_mm, screen->height_mm);
-
     randr = KdSubRotation(scrpriv->randr, screen->randr);
 
-    RRSetCurrentConfig(pScreen, randr, 0, pSize);
-
-    return TRUE;
+    return KdRandRGetInfo(pScreen, randr, fbdevRandrModeSupported);
 }
 
 static Bool
@@ -589,6 +743,7 @@ fbdevRandRSetConfig(ScreenPtr pScreen,
     FbdevScrPriv *scrpriv = screen->driver;
     Bool wasEnabled = pScreenPriv->enabled;
     FbdevScrPriv oldscr;
+    const KdMonitorTiming *t;
     int oldwidth;
     int oldheight;
     int oldmmwidth;
@@ -630,6 +785,11 @@ fbdevRandRSetConfig(ScreenPtr pScreen,
 
     fbdevUnmapFramebuffer(screen);
 
+    t = KdRandRGetTiming(pScreen, fbdevRandrModeChangeSupported, rate, pSize);
+
+    if (!t || !fbdevSetMode(screen, t))
+        goto bail4;
+
     if (!fbdevMapFramebuffer(screen))
         goto bail4;
 
@@ -654,8 +814,11 @@ fbdevRandRSetConfig(ScreenPtr pScreen,
     /* set the subpixel order */
 
     KdSetSubpixelOrder(pScreen, scrpriv->randr);
-    if (wasEnabled)
+
+    if (wasEnabled) {
         KdEnableScreen(pScreen);
+        fbdevClearFramebuffer(screen);
+    }
 
     return TRUE;
 
@@ -772,6 +935,13 @@ fbdevCreateResources(ScreenPtr pScreen)
 void
 fbdevPreserve(KdCardInfo * card)
 {
+    FbdevPriv *priv = card->driver;
+    memset(&priv->saved_var, 0, sizeof(priv->saved_var));
+    if (ioctl(priv->fd, FBIOGET_VSCREENINFO, &priv->saved_var) < 0) {
+        LogMessage(X_INFO, "Xfbdev(%d): Failed to save the video card mode: %s\n",
+                   card->mynum, strerror(errno));
+        memset(&priv->saved_var, 0, sizeof(priv->saved_var));
+    }
 }
 
 static int
@@ -833,19 +1003,14 @@ fbdevDPMS(ScreenPtr pScreen, int mode)
 {
     KdScreenPriv(pScreen);
     FbdevPriv *priv = pScreenPriv->card->driver;
-    static int oldmode = -1;
 
-    if (mode == oldmode)
-        return TRUE;
 #ifdef FBIOPUT_POWERMODE
     if (ioctl(priv->fd, FBIOPUT_POWERMODE, &mode) >= 0) {
-        oldmode = mode;
         return TRUE;
     }
 #endif
 #ifdef FBIOBLANK
     if (ioctl(priv->fd, FBIOBLANK, mode ? mode + 1 : 0) >= 0) {
-        oldmode = mode;
         return TRUE;
     }
 #endif
@@ -863,6 +1028,12 @@ fbdevDisable(ScreenPtr pScreen)
 void
 fbdevRestore(KdCardInfo * card)
 {
+    FbdevPriv *priv = card->driver;
+    if (priv->saved_var.xres &&
+        (ioctl(priv->fd, FBIOPUT_VSCREENINFO, &priv->saved_var) < 0)) {
+        LogMessage(X_INFO, "Xfbdev(%d): Failed to restore the video card mode: %s\n",
+                   card->mynum, strerror(errno));
+    }
 }
 
 void

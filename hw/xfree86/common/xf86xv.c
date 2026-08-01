@@ -36,9 +36,9 @@
 
 #include "dix/screen_hooks_priv.h"
 #include "include/extinit.h"
-#include "Xext/xvdix_priv.h"
+#include "include/misc.h"
+#include "Xext/xv/xvdix_priv.h"
 
-#include "misc.h"
 #include "xf86.h"
 #include "xf86_OSproc.h"
 #include "scrnintstr.h"
@@ -115,7 +115,7 @@ static unsigned long PortResource = 0;
     ((XvScreenPtr)dixLookupPrivate(&(pScreen)->devPrivates, XvGetScreenKey()))
 
 #define GET_XF86XV_SCREEN(pScreen) \
-    ((XF86XVScreenPtr)(dixGetPrivate(&pScreen->devPrivates, &XF86XVScreenPrivateKey)))
+    ((XF86XVScreenPtr)(dixGetPrivate(&(pScreen)->devPrivates, &XF86XVScreenPrivateKey)))
 
 #define GET_XF86XV_WINDOW(pWin) \
     ((XF86XVWindowPtr)dixLookupPrivate(&(pWin)->devPrivates, XF86XVWindowKey))

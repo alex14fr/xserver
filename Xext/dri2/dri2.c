@@ -35,6 +35,7 @@
 #include <errno.h>
 
 #include "dix/dix_priv.h"
+#include "dix/request_priv.h"
 #include "os/client_priv.h"
 
 #ifdef WITH_LIBDRM
@@ -47,6 +48,8 @@
 #include "dri2_priv.h"
 #include "dri2int.h"
 #include "damage.h"
+
+#include "dri2_intern.h"
 
 CARD8 dri2_major;               /* version of DRI2 supported by DDX */
 CARD8 dri2_minor;
@@ -89,7 +92,7 @@ typedef struct _DRI2Drawable {
     CARD64 last_swap_ust;       /* ust at completion of most recent swap */
     int swap_limit;             /* for N-buffering */
     unsigned blocked[3];
-    Bool needInvalidate;
+    bool needInvalidate;
     int prime_id;
     PixmapPtr prime_secondary_pixmap;
     PixmapPtr redirectpixmap;
@@ -353,9 +356,8 @@ DRI2CreateDrawable2(ClientPtr client, DrawablePtr pDraw, XID id,
     pPriv->prime_id = dri2_client->prime_id;
 
     XID dri2_id = FakeClientID(client->index);
-    int rc = DRI2AddDrawableRef(pPriv, id, dri2_id, invalidate, priv);
-    if (rc != Success)
-        return rc;
+
+    X_CALL_CHECK_ERR(DRI2AddDrawableRef(pPriv, id, dri2_id, invalidate, priv));
 
     if (dri2_id_out)
         *dri2_id_out = dri2_id;
@@ -527,7 +529,7 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
 {
     DRI2DrawablePtr pPriv = DRI2GetDrawable(pDraw);
 
-    if (!pPriv) {
+    if (!pPriv || count > DRI2BufferHiz + 1) {
         *width = pDraw->width;
         *height = pDraw->height;
         *out_count = 0;
@@ -539,19 +541,38 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
     int dimensions_match = (pDraw->width == pPriv->width)
         && (pDraw->height == pPriv->height);
 
-    DRI2BufferPtr *buffers = calloc((count + 1), sizeof(buffers[0]));
+    /* Since we deduplicate attachments in the buffers array, there cannot be
+     * more entries than there are attachments, plus one slot for a
+     * synthesized real/fake front buffer the client didn't explicitly
+     * request. 'count' is already capped at DRI2BufferHiz + 1 by the check
+     * above, so this is never a large allocation; clamping it again via
+     * min(count, DRI2BufferHiz) is wrong at that exact boundary (count ==
+     * DRI2BufferHiz + 1) -- it throws away the "+1" slack right when the
+     * loop below can legitimately use every one of the 'count' slots itself,
+     * leaving no room for the synthesized buffer and writing one past the
+     * end of this array.
+     */
+    DRI2BufferPtr *buffers = calloc(count + 1, sizeof(buffers[0]));
     if (!buffers)
         goto err_out;
 
-    int need_real_front = 0;
-    int need_fake_front = 0;
-    int have_fake_front = 0;
+    Bool need_real_front = FALSE;
+    Bool need_fake_front = FALSE;
     int front_format = 0;
     int buffers_changed = 0;
     int i;
+    unsigned attachments_bitset = 0;
     for (i = 0; i < count; i++) {
         const unsigned attachment = *(attachments++);
         const unsigned format = (has_format) ? *(attachments++) : 0;
+
+        if (attachment > DRI2BufferHiz)
+            goto err_out;
+
+        if (attachments_bitset & (1u << attachment))
+            continue;
+
+        attachments_bitset |= 1u << attachment;
 
         if (allocate_or_reuse_buffer(pDraw, ds, pPriv, attachment,
                                      format, dimensions_match, &buffers[i]))
@@ -560,34 +581,27 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
         if (buffers[i] == NULL)
             goto err_out;
 
-        /* If the drawable is a window and the front-buffer is requested,
-         * silently add the fake front-buffer to the list of requested
-         * attachments.  The counting logic in the loop accounts for the case
-         * where the client requests both the fake and real front-buffer.
+        /* In certain cases the (fake) front buffer is always needed, so return
+         * it even if the client failed to request it.
+         * The logic in & after the loop accounts for the case where the client
+         * does request the (fake) front buffer, to avoid returning it multiple
+         * times.
          */
         if (attachment == DRI2BufferBackLeft) {
-            need_real_front++;
+            need_real_front = TRUE;
             front_format = format;
         }
 
         if (attachment == DRI2BufferFrontLeft) {
-            need_real_front--;
             front_format = format;
 
-            if (pDraw->type == DRAWABLE_WINDOW) {
-                need_fake_front++;
-            }
-        }
-
-        if (pDraw->type == DRAWABLE_WINDOW) {
-            if (attachment == DRI2BufferFakeFrontLeft) {
-                need_fake_front--;
-                have_fake_front = 1;
-            }
+            if (pDraw->type == DRAWABLE_WINDOW)
+                need_fake_front = TRUE;
         }
     }
 
-    if (need_real_front > 0) {
+    if (need_real_front &&
+        !(attachments_bitset & (1u << DRI2BufferFrontLeft))) {
         if (allocate_or_reuse_buffer(pDraw, ds, pPriv, DRI2BufferFrontLeft,
                                      front_format, dimensions_match,
                                      &buffers[i]))
@@ -598,7 +612,8 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
         i++;
     }
 
-    if (need_fake_front > 0) {
+    if (need_fake_front &&
+        !(attachments_bitset & (1u << DRI2BufferFakeFrontLeft))) {
         if (allocate_or_reuse_buffer(pDraw, ds, pPriv, DRI2BufferFakeFrontLeft,
                                      front_format, dimensions_match,
                                      &buffers[i]))
@@ -608,7 +623,7 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
             goto err_out;
 
         i++;
-        have_fake_front = 1;
+        attachments_bitset |= 1u << DRI2BufferFakeFrontLeft;
     }
 
     *out_count = i;
@@ -620,7 +635,8 @@ do_get_buffers(DrawablePtr pDraw, int *width, int *height,
      * contents of the real front-buffer.  This ensures correct operation of
      * applications that call glXWaitX before calling glDrawBuffer.
      */
-    if (have_fake_front && buffers_changed) {
+    if (buffers_changed &&
+        (attachments_bitset & (1u << DRI2BufferFakeFrontLeft))) {
         BoxRec box;
         RegionRec region;
 
@@ -1569,8 +1585,7 @@ DRI2CloseScreen(ScreenPtr pScreen)
 }
 
 /* Called by InitExtensions() */
-Bool
-DRI2ModuleSetup(void)
+bool DRI2ModuleSetup(void)
 {
     dri2DrawableRes = CreateNewResourceType(DRI2DrawableGone, "DRI2Drawable");
     if (!dri2DrawableRes)

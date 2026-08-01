@@ -97,8 +97,11 @@ Equipment Corporation.
  */
 
 #include <dix-config.h>
+
+#include <stdbool.h>
 #include <version-config.h>
 
+#include <assert.h>
 #include <stddef.h>
 #include <X11/fonts/fontstruct.h>
 #include <X11/fonts/libxfont2.h>
@@ -124,9 +127,13 @@ Equipment Corporation.
 #include "os/auth.h"
 #include "os/client_priv.h"
 #include "os/ddx_priv.h"
+#include "os/io_priv.h"
+#include "os/mathx_priv.h"
 #include "os/osdep.h"
 #include "os/probes_priv.h"
 #include "os/screensaver.h"
+#include "Xext/panoramiX/panoramiX_priv.h"
+#include "Xext/xfixes/xfixesint.h"
 
 #include "windowstr.h"
 #include "dixfontstr.h"
@@ -143,16 +150,15 @@ Equipment Corporation.
 #include "xace.h"
 #include "inputstr.h"
 #include "xkbsrv.h"
-#include "xfixesint.h"
 #include "dixstruct_priv.h"
 
 #define mskcnt ((MAXCLIENTS + 31) / 32)
 #define BITMASK(i) (1U << ((i) & 31))
 #define MASKIDX(i) ((i) >> 5)
-#define MASKWORD(buf, i) buf[MASKIDX(i)]
-#define BITSET(buf, i) MASKWORD(buf, i) |= BITMASK(i)
-#define BITCLEAR(buf, i) MASKWORD(buf, i) &= ~BITMASK(i)
-#define GETBIT(buf, i) (MASKWORD(buf, i) & BITMASK(i))
+#define MASKWORD(buf, i) (buf)[MASKIDX((i))]
+#define BITSET(buf, i) MASKWORD((buf), (i)) |= BITMASK((i))
+#define BITCLEAR(buf, i) MASKWORD((buf), (i)) &= ~BITMASK((i))
+#define GETBIT(buf, i) (MASKWORD((buf), (i)) & BITMASK((i)))
 
 xConnSetupPrefix connSetupPrefix;
 
@@ -190,7 +196,7 @@ volatile char dispatchException = 0;
 volatile char isItTimeToYield;
 
 #define SAME_SCREENS(a, b) (\
-    (a.pScreen == b.pScreen))
+    ((a).pScreen == (b).pScreen))
 
 ClientPtr
 GetCurrentClient(void)
@@ -598,7 +604,6 @@ Bool
 CreateConnectionBlock(void)
 {
     xConnSetup setup;
-    xWindowRoot root;
     xDepth depth;
     xVisualType visual;
     xPixmapFormat format;
@@ -666,23 +671,24 @@ CreateConnectionBlock(void)
         DepthPtr pDepth;
         VisualPtr pVisual;
 
-        root.windowId = walkScreen->root->drawable.id;
-        root.defaultColormap = walkScreen->defColormap;
-        root.whitePixel = walkScreen->whitePixel;
-        root.blackPixel = walkScreen->blackPixel;
-        root.currentInputMask = 0;      /* filled in when sent */
-        root.pixWidth = walkScreen->width;
-        root.pixHeight = walkScreen->height;
-        root.mmWidth = walkScreen->mmWidth;
-        root.mmHeight = walkScreen->mmHeight;
-        root.minInstalledMaps = walkScreen->minInstalledCmaps;
-        root.maxInstalledMaps = walkScreen->maxInstalledCmaps;
-        root.rootVisualID = walkScreen->rootVisual;
-        root.backingStore = walkScreen->backingStoreSupport;
-        root.saveUnders = FALSE;
-        root.rootDepth = walkScreen->rootDepth;
-        root.nDepths = walkScreen->numDepths;
-        memcpy(pBuf, &root, sizeof(xWindowRoot));
+        xWindowRoot *root = (xWindowRoot*)pBuf;
+        root->windowId = walkScreen->root->drawable.id;
+        root->defaultColormap = walkScreen->defColormap;
+        root->whitePixel = walkScreen->whitePixel;
+        root->blackPixel = walkScreen->blackPixel;
+        root->currentInputMask = 0;      /* filled in when sent */
+        root->pixWidth = walkScreen->width;
+        root->pixHeight = walkScreen->height;
+        root->mmWidth = walkScreen->mmWidth;
+        root->mmHeight = walkScreen->mmHeight;
+        root->minInstalledMaps = walkScreen->minInstalledCmaps;
+        root->maxInstalledMaps = walkScreen->maxInstalledCmaps;
+        root->rootVisualID = walkScreen->rootVisual;
+        root->backingStore = walkScreen->backingStoreSupport;
+        root->saveUnders = FALSE;
+        root->rootDepth = walkScreen->rootDepth;
+        root->nDepths = walkScreen->numDepths;
+
         sizesofar += sizeof(xWindowRoot);
         pBuf += sizeof(xWindowRoot);
 
@@ -1380,7 +1386,7 @@ ProcQueryFont(ClientPtr client)
             SwapFont(reply, TRUE);
         }
 
-        WriteToClient(client, rlength, reply);
+        dixWriteToClient(client, rlength, reply);
         free(reply);
         return Success;
     }
@@ -2147,14 +2153,15 @@ ProcPutImage(ClientPtr client)
 {
     GCPtr pGC;
     DrawablePtr pDraw;
-    long length;                /* length of scanline server padded */
-    long lengthProto;           /* length of scanline protocol padded */
     char *tmpImage;
 
     REQUEST(xPutImageReq);
 
     REQUEST_AT_LEAST_SIZE(xPutImageReq);
     VALIDATE_DRAWABLE_AND_GC(stuff->drawable, pDraw, DixWriteAccess);
+
+    size_t length;                /* length of scanline server padded */
+
     if (stuff->format == XYBitmap) {
         if ((stuff->depth != 1) ||
             (stuff->leftPad >= (unsigned int) screenInfo.bitmapScanlinePad))
@@ -2179,7 +2186,7 @@ ProcPutImage(ClientPtr client)
     }
 
     tmpImage = (char *) &stuff[1];
-    lengthProto = length;
+    size_t lengthProto = length; /* length of scanline protocol padded */
 
     if (stuff->height != 0 && lengthProto >= (INT32_MAX / stuff->height))
         return BadLength;
@@ -2216,7 +2223,6 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
 
     /* coordinates relative to the bounding drawable */
     int relx, rely;
-    long widthBytesLine, length;
     Mask plane = 0;
     RegionPtr pVisibleRegion = NULL;
 
@@ -2286,6 +2292,8 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
         return BadMatch;
 
     reply.depth = pDraw->depth;
+
+    size_t widthBytesLine, length;
     if (format == ZPixmap) {
         widthBytesLine = PixmapBytePad(width, pDraw->depth);
         length = widthBytesLine * height;
@@ -2337,7 +2345,7 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
     else if (format == ZPixmap) {
         linesDone = 0;
         while (height - linesDone > 0) {
-            size_t nlines = min(linesPerBuf, height - linesDone);
+            size_t nlines = MIN(linesPerBuf, height - linesDone);
 
             char *pBuf = x_rpcbuf_reserve(&rpcbuf, (nlines * widthBytesLine));
             if (!pBuf) {
@@ -2369,7 +2377,7 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
             if (planemask & plane) {
                 linesDone = 0;
                 while (height - linesDone > 0) {
-                    size_t nlines = min(linesPerBuf, height - linesDone);
+                    size_t nlines = MIN(linesPerBuf, height - linesDone);
 
                     char *pBuf = x_rpcbuf_reserve(&rpcbuf, (nlines * widthBytesLine));
                     if (!pBuf) {
@@ -2770,8 +2778,9 @@ ProcAllocNamedColor(ClientPtr client)
         swaps(&reply.screenBlue);
     }
 
+    /* if PanoramiX is active, and this isn't the master screen, keep radio silence */
 #ifdef XINERAMA
-    if (noPanoramiXExtension || !pcmp->pScreen->myNum)
+    if (PanoramiXIsDisabled() || !pcmp->pScreen->myNum)
         return X_SEND_REPLY_SIMPLE(client, reply);
     return Success;
 #else
@@ -2820,7 +2829,7 @@ ProcAllocColorCells(ClientPtr client)
             return rc;
         }
 #ifdef XINERAMA
-        if (noPanoramiXExtension || !pcmp->pScreen->myNum)
+        if (PanoramiXIsDisabled() || !pcmp->pScreen->myNum)
 #endif /* XINERAMA */
         {
             xAllocColorCellsReply reply = {
@@ -2896,7 +2905,7 @@ ProcAllocColorPlanes(ClientPtr client)
         }
 
 #ifdef XINERAMA
-        if (noPanoramiXExtension || !pcmp->pScreen->myNum)
+        if (PanoramiXIsDisabled() || !pcmp->pScreen->myNum)
 #endif /* XINERAMA */
         {
             return X_SEND_REPLY_WITH_RPCBUF(client, reply, rpcbuf);
@@ -3015,7 +3024,7 @@ ProcQueryColors(ClientPtr client)
             bytes_to_int32((client->req_len << 2) - sizeof(xQueryColorsReq));
 
         x_rpcbuf_t rpcbuf = { .swapped = client->swapped, .err_clear = TRUE };
-        xrgb *prgbs = x_rpcbuf_reserve(&rpcbuf, count * sizeof(xrgb));
+        xrgb *prgbs = x_rpcbuf_reserve0(&rpcbuf, count * sizeof(xrgb));
         if (!prgbs && count)
             return BadAlloc;
         if ((rc =
@@ -3104,7 +3113,6 @@ ProcCreateCursor(ClientPtr client)
     PixmapPtr msk;
     unsigned char *srcbits;
     unsigned short width, height;
-    long n;
     CursorMetricRec cm;
     int rc;
 
@@ -3149,7 +3157,8 @@ ProcCreateCursor(ClientPtr client)
     srcbits = calloc(BitmapBytePad(width), height);
     if (!srcbits)
         return BadAlloc;
-    n = BitmapBytePad(width) * height;
+
+    size_t n = BitmapBytePad(width) * height;
 
     unsigned char *mskbits = calloc(1, n);
     if (!mskbits) {
@@ -3182,17 +3191,11 @@ ProcCreateCursor(ClientPtr client)
                          &pCursor, client, stuff->cid);
 
     if (rc != Success)
-        goto bail;
-    if (!AddResource(stuff->cid, X11_RESTYPE_CURSOR, (void *) pCursor)) {
-        rc = BadAlloc;
-        goto bail;
-    }
+        return rc;
+    if (!AddResource(stuff->cid, X11_RESTYPE_CURSOR, (void *) pCursor))
+        return BadAlloc;
 
     return Success;
- bail:
-    free(srcbits);
-    free(mskbits);
-    return rc;
 }
 
 int
@@ -3739,6 +3742,7 @@ InitClient(ClientPtr client, int i, void *ospriv)
     client->index = i;
     xorg_list_init(&client->ready);
     xorg_list_init(&client->output_pending);
+    xorg_list_init(&client->saveSets);
     client->clientAsMask = ((Mask) i) << CLIENTOFFSET;
     client->closeDownMode = i ? DestroyAll : RetainPermanent;
     client->requestVector = InitialVector;
@@ -3851,8 +3855,8 @@ SendConnSetup(ClientPtr client, const char *reason)
         if (client->swapped)
             WriteSConnSetupPrefix(client, &csp);
         else
-            WriteToClient(client, sz_xConnSetupPrefix, &csp);
-        WriteToClient(client, (int) csp.lengthReason, reason);
+            dixWriteToClient(client, sz_xConnSetupPrefix, &csp);
+        dixWriteToClient(client, (int) csp.lengthReason, reason);
         return client->noClientException = -1;
     }
 
@@ -3878,7 +3882,7 @@ SendConnSetup(ClientPtr client, const char *reason)
     /* fill in the "currentInputMask" */
     root = (xWindowRoot *) (lConnectionInfo + connBlockScreenStart);
 #ifdef XINERAMA
-    if (noPanoramiXExtension)
+    if (PanoramiXIsDisabled())
         numScreens = screenInfo.numScreens;
     else
         numScreens = ((xConnSetup *) ConnectionInfo)->numRoots;
@@ -3905,8 +3909,8 @@ SendConnSetup(ClientPtr client, const char *reason)
                              lConnectionInfo);
     }
     else {
-        WriteToClient(client, sizeof(xConnSetupPrefix), lconnSetupPrefix);
-        WriteToClient(client, (int) (lconnSetupPrefix->length << 2),
+        dixWriteToClient(client, sizeof(xConnSetupPrefix), lconnSetupPrefix);
+        dixWriteToClient(client, (int) (lconnSetupPrefix->length << 2),
 		      lConnectionInfo);
     }
     client->clientState = ClientStateRunning;
@@ -4121,7 +4125,7 @@ AddScreen(Bool (*pfnInit) (ScreenPtr /*pScreen */ ,
 
     int i;
     ScreenPtr pScreen;
-    Bool ret;
+    bool ret;
 
     i = screenInfo.numScreens;
     if (i == MAXSCREENS)
@@ -4168,7 +4172,7 @@ AddGPUScreen(Bool (*pfnInit) (ScreenPtr /*pScreen */ ,
 {
     int i;
     ScreenPtr pScreen;
-    Bool ret;
+    bool ret;
 
     i = screenInfo.numGPUScreens;
     if (i == MAXGPUSCREENS)
@@ -4283,3 +4287,9 @@ DetachOffloadGPU(ScreenPtr secondary)
     secondary->is_offload_secondary = FALSE;
 }
 
+bool dixAnyOtherGrabbed(ClientPtr client)
+{
+    return ((grabState == GrabActive) &&
+            (grabClient != NULL) &&
+            (grabClient != client));
+}

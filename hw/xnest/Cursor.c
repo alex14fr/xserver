@@ -22,9 +22,10 @@ is" without express or implied warranty.
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
 
+#include "include/misc.h"
+
 #include "screenint.h"
 #include "input.h"
-#include "misc.h"
 #include "cursorstr.h"
 #include "scrnintstr.h"
 #include "servermd.h"
@@ -62,7 +63,7 @@ xnestRealizeCursor(DeviceIntPtr pDev, ScreenPtr pScreen, CursorPtr pCursor)
     Pixmap const mask = xcb_generate_id(xnestUpstreamInfo.conn);
     xcb_create_pixmap(xnestUpstreamInfo.conn, 1, mask, winId, pCursor->bits->width, pCursor->bits->height);
 
-    int const pixmap_len = BitmapBytePad(pCursor->bits->width) * pCursor->bits->height;
+    size_t const pixmap_len = BitmapBytePad(pCursor->bits->width) * pCursor->bits->height;
 
     xcb_put_image(xnestUpstreamInfo.conn,
                   XCB_IMAGE_FORMAT_XY_BITMAP,

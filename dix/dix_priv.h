@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  */
@@ -10,6 +10,7 @@
  *  drivers or extension modules. Thus the definitions here are not part of the
  *  Xserver's module API/ABI.
  */
+#include <stdbool.h>
 
 #include <X11/Xdefs.h>
 #include <X11/Xfuncproto.h>
@@ -28,6 +29,7 @@
 #include "include/os.h"
 #include "include/resource.h"
 #include "include/window.h"
+#include "os/io_priv.h"       /* dixWriteToClient */
 
 /* pad scanline to a longword */
 #define BITMAP_SCANLINE_UNIT    32
@@ -41,11 +43,7 @@
     } while (0)
 
 /* static assert for protocol structure sizes */
-#ifndef __size_assert
-#define __size_assert(what, howmuch) \
-  typedef char what##_size_wrong_[( !!(sizeof(what) == howmuch) )*2-1 ]
-#endif
-#define XTYPE_SIZE_ASSERT(typename) __size_assert(typename,SIZEOF(typename))
+#define XTYPE_SIZE_ASSERT(typename) __SIZE_ASSERT(typename,SIZEOF(typename))
 
 /* server setting: maximum size for big requests */
 #define MAX_BIG_REQUEST_SIZE 4194303
@@ -113,16 +111,16 @@ void DeleteWindowFromAnySaveSet(WindowPtr pWin);
 
 #define VALIDATE_DRAWABLE_AND_GC(drawID, pDraw, mode)                   \
     do {                                                                \
-        int tmprc = dixLookupDrawable(&(pDraw), drawID, client, M_ANY, mode); \
+        int tmprc = dixLookupDrawable(&(pDraw), (drawID), client, M_ANY, (mode)); \
         if (tmprc != Success)                                           \
             return tmprc;                                               \
         tmprc = dixLookupGC(&(pGC), stuff->gc, client, DixUseAccess);   \
         if (tmprc != Success)                                           \
             return tmprc;                                               \
-        if ((pGC->depth != pDraw->depth) || (pGC->pScreen != pDraw->pScreen)) \
+        if ((pGC->depth != (pDraw)->depth) || (pGC->pScreen != (pDraw)->pScreen)) \
             return BadMatch;                                            \
-        if (pGC->serialNumber != pDraw->serialNumber)                   \
-            ValidateGC(pDraw, pGC);                                     \
+        if (pGC->serialNumber != (pDraw)->serialNumber)                   \
+            ValidateGC((pDraw), pGC);                                     \
     } while (0)
 
 int dixLookupGC(GCPtr *result,
@@ -382,6 +380,15 @@ void dixScreenRaisePixmapDestroy(PixmapPtr pPixmap);
  * Should only be called by DIX itself.
  */
 Bool dixScreenRaiseCreateResources(ScreenPtr pScreen);
+
+/*
+ * @brief call screen's DisplayCursor chain
+ * @param pScreen the screen to operate on
+ * @param pDev    device whose cursor to show/hide
+ * @param pCursor cursor object (NullCursor = hide the cursor)
+ * @return TRUE if the cursor was displayed, FALSE otherwise
+ */
+Bool dixScreenRaiseDisplayCursor(ScreenPtr pScreen, DeviceIntPtr pDev, CursorPtr pCursor);
 
 /*
  * @brief mark event ID as critical
@@ -747,7 +754,7 @@ static inline Atom dixGetAtomID(const char *name) {
  *
  * @param client      pointer to the client (ClientPtr)
  * @param event       pointer to the event
- * @return            return value of WriteToClient
+ * @return            return value of dixWriteToClient
  */
 static inline int xmitClientEvent(ClientPtr pClient, xEvent ev)
 {
@@ -756,7 +763,7 @@ static inline int xmitClientEvent(ClientPtr pClient, xEvent ev)
     if (pClient->swapped)
         swaps(&ev.u.u.sequenceNumber);
 
-    return WriteToClient(pClient, sizeof(xEvent), &ev);
+    return dixWriteToClient(pClient, sizeof(xEvent), &ev);
 }
 
 /*
@@ -805,6 +812,21 @@ static inline void SwapLongs(CARD32 *list, unsigned long count) {
 }
 
 #define SwapRestL(stuff) \
-    SwapLongs((CARD32 *)(stuff + 1), (client->req_len - (sizeof(*stuff) >> 2)))
+    SwapLongs((CARD32 *)((stuff) + 1), (client->req_len - (sizeof(*(stuff)) >> 2)))
+
+/*
+ * retrieve current grab client or NULL (if no grab)
+ *
+ */
+ClientPtr dixGetGrabClient(void);
+
+/*
+ * Check whether any client has grabbed the server and it's not
+ * the given client.
+ *
+ * @param client    the client to check against
+ * @return          TRUE if any client, except the given one, has grabbed
+ */
+bool dixAnyOtherGrabbed(ClientPtr client);
 
 #endif /* _XSERVER_DIX_PRIV_H */

@@ -177,8 +177,15 @@ winInitializeScreens(int maxscreens)
 
     if (maxscreens > g_iNumScreens) {
         /* Reallocate the memory for DDX-specific screen info */
-        g_ScreenInfo =
+        winScreenInfo *newScreenInfo =
             realloc(g_ScreenInfo, maxscreens * sizeof(winScreenInfo));
+
+        if (!newScreenInfo) {
+            FatalError("winInitializeScreens: realloc(%p, %d) failed\n",
+                   (void *)g_ScreenInfo, maxscreens * (int)sizeof(winScreenInfo));
+            return;
+        }
+        g_ScreenInfo = newScreenInfo;
 
         /* Set default values for any new screens */
         for (i = g_iNumScreens; i < maxscreens; i++)
@@ -209,10 +216,10 @@ winInitializeScreens(int maxscreens)
  */
 
 /* Check if enough arguments are given for the option */
-#define CHECK_ARGS(count) if (i + count >= argc) { UseMsg (); return 0; }
+#define CHECK_ARGS(count) if (i + (count) >= argc) { UseMsg (); return 0; }
 
 /* Compare the current option with the string. */
-#define IS_OPTION(name) (strcmp (argv[i], name) == 0)
+#define IS_OPTION(name) (strcmp (argv[i], (name)) == 0)
 
 int
 ddxProcessArgument(int argc, char *argv[], int i)
@@ -236,7 +243,7 @@ ddxProcessArgument(int argc, char *argv[], int i)
 
             /*
              * Initialize default screen settings.  We have to do this before
-             * OsVendorInit () gets called, otherwise we will overwrite
+             * ddxInit() gets called, otherwise we will overwrite
              * settings changed by parameters such as -fullscreen, etc.
              */
             winErrorFVerb(3, "ddxProcessArgument - Initializing default "

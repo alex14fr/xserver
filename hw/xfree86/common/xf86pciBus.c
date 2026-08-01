@@ -34,6 +34,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pciaccess.h>
+#ifdef WITH_LIBDRM
+#include <xf86drm.h>
+#endif
 #include <X11/X.h>
 
 #include "os/log_priv.h"
@@ -109,8 +112,7 @@ xf86PciProbe(void)
             xf86PciVideoInfo[num - 1] = info;
 
             pci_device_probe(info);
-            if (primaryBus.type == BUS_NONE && (pci_device_is_boot_vga(info) ||
-                                                pci_device_is_boot_display(info))) {
+            if (primaryBus.type == BUS_NONE && pci_device_is_boot_display(info)) {
                 primaryBus.type = BUS_PCI;
                 primaryBus.id.pci = info;
             }
@@ -118,6 +120,18 @@ xf86PciProbe(void)
         }
     }
     free(iter);
+
+    /* If no boot display was found, fall back to the boot VGA device */
+    if (primaryBus.type == BUS_NONE) {
+        for (i = 0; i < num; i++) {
+            info = xf86PciVideoInfo[i];
+            if (pci_device_is_boot_vga(info)) {
+                primaryBus.type = BUS_PCI;
+                primaryBus.id.pci = info;
+                break;
+            }
+        }
+    }
 
     /* If we haven't found a primary device try a different heuristic */
     if (primaryBus.type == BUS_NONE && num) {
@@ -1115,55 +1129,23 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
 			driverList[0] = "psb";
 			driverList[1] = "psb_drv";
 			break;
-		/* GMA600/Oaktrail */
-		case 0x4100:
-		case 0x4101:
-		case 0x4102:
-		case 0x4103:
-		case 0x4104:
-		case 0x4105:
-		case 0x4106:
-		case 0x4107:
-		/* Atom E620/Oaktrail */
-		case 0x4108:
-		/* Medfield */
-		case 0x0130:
-		case 0x0131:
-		case 0x0132:
-		case 0x0133:
-		case 0x0134:
-		case 0x0135:
-		case 0x0136:
-		case 0x0137:
-		/* GMA 3600/CDV */
-		case 0x0be0:
-		case 0x0be1:
-		case 0x0be2:
-		case 0x0be3:
-		case 0x0be4:
-		case 0x0be5:
-		case 0x0be6:
-		case 0x0be7:
-		case 0x0be8:
-		case 0x0be9:
-		case 0x0bea:
-		case 0x0beb:
-		case 0x0bec:
-		case 0x0bed:
-		case 0x0bee:
-		case 0x0bef:
-			/* Use fbdev/vesa driver on Oaktrail, Medfield, CDV */
-			break;
-		/* Default to intel only on pre-gen3 chips */
-		case 0x7121:
-		case 0x7123:
-		case 0x7125:
-		case 0x1132:
+		/* Default to intel only on pre-gen4 chips */
 		case 0x3577:
 		case 0x2562:
 		case 0x3582:
 		case 0x358e:
 		case 0x2572:
+		case 0x2582:
+		case 0x258a:
+		case 0x2592:
+		case 0x2772:
+		case 0x27a2:
+		case 0x27ae:
+		case 0x29b2:
+		case 0x29c2:
+		case 0x29d2:
+		case 0xa001:
+		case 0xa011:
 			driverList[0] = "intel";
 			break;
         }
@@ -1179,7 +1161,26 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
     {
         int idx = 0;
 
-#if defined(__linux__) || defined(__NetBSD__)
+#if defined(WITH_LIBDRM) && (defined(__linux__) || defined(__NetBSD__))
+        char busid[32];
+        int fd;
+
+        snprintf(busid, sizeof(busid), "pci:%04x:%02x:%02x.%d",
+                 dev->domain, dev->bus, dev->dev, dev->func);
+
+       /* 'modesetting' is preferred for GeForce 8 and newer GPUs */
+        fd = drmOpenWithType("nouveau", busid, DRM_NODE_RENDER);
+        if (fd >= 0) {
+            uint64_t args[] = { 11 /* NOUVEAU_GETPARAM_CHIPSET_ID */, 0 };
+            int ret = drmCommandWriteRead(fd, 0 /* DRM_NOUVEAU_GETPARAM */,
+                                          &args, sizeof(args));
+            drmClose(fd);
+            if (ret == 0) {
+                if (args[1] == 0x050 || args[1] >= 0x80)
+                    break;
+            }
+        }
+
         driverList[idx++] = "nouveau";
 #endif
         driverList[idx++] = "modesetting";
@@ -1436,14 +1437,15 @@ xf86PciConfigureNewDev(void *busData, struct pci_device *pVideo,
                        GDevRec * GDev, int *chipset)
 {
     char busnum[8];
-    char *tmp;
+    char *tmp = NULL;
 
     pVideo = (struct pci_device *) busData;
 
     snprintf(busnum, sizeof(busnum), "%d", pVideo->bus);
 
-    XNFasprintf(&tmp, "PCI:%s:%d:%d",
-                busnum, pVideo->dev, pVideo->func);
+    if (asprintf(&tmp, "PCI:%s:%d:%d",
+                busnum, pVideo->dev, pVideo->func) == -1)
+        FatalError("malloc failed\n");
     GDev->busID = tmp;
 
     GDev->chipID = pVideo->device_id;

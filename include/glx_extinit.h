@@ -41,7 +41,14 @@ struct __GLXprovider {
 };
 extern __GLXprovider __glXDRISWRastProvider;
 
+/* exported for glamor */
+_X_EXPORT
 void GlxPushProvider(__GLXprovider * provider);
+
+/**
+ * @brief xorgGlxCreateVendor adds default glx vendor callback
+ * @warning this function need to be called once, because it installs `catch-all` style which always succeed
+ */
 void xorgGlxCreateVendor(void);
 
 #else /* GLXEXT */

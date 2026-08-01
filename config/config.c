@@ -25,8 +25,12 @@
 
 #include <dix-config.h>
 
+#include <stdbool.h>
 #include <unistd.h>
 
+#include "config/config-hal.h"
+#include "config/config-udev.h"
+#include "config/config-wscons.h"
 #include "config/hotplug_priv.h"
 
 #include "os.h"
@@ -38,37 +42,27 @@
 void
 config_pre_init(void)
 {
-#ifdef CONFIG_UDEV
     if (!config_udev_pre_init())
         ErrorF("[config] failed to pre-init udev\n");
-#endif
 }
 
 void
 config_init(void)
 {
-#ifdef CONFIG_UDEV
     if (!config_udev_init())
         ErrorF("[config] failed to initialise udev\n");
-#elif defined(CONFIG_HAL)
     if (!config_hal_init())
         ErrorF("[config] failed to initialise HAL\n");
-#elif defined(CONFIG_WSCONS)
     if (!config_wscons_init())
         ErrorF("[config] failed to initialise wscons\n");
-#endif
 }
 
 void
 config_fini(void)
 {
-#if defined(CONFIG_UDEV)
     config_udev_fini();
-#elif defined(CONFIG_HAL)
     config_hal_fini();
-#elif defined(CONFIG_WSCONS)
     config_wscons_fini();
-#endif
 }
 
 void
@@ -110,24 +104,6 @@ remove_devices(const char *backend, const char *config_info)
     }
 
     RemoveInputDeviceTraces(config_info);
-}
-
-BOOL
-device_is_duplicate(const char *config_info)
-{
-    DeviceIntPtr dev;
-
-    for (dev = inputInfo.devices; dev; dev = dev->next) {
-        if (dev->config_info && (strcmp(dev->config_info, config_info) == 0))
-            return TRUE;
-    }
-
-    for (dev = inputInfo.off_devices; dev; dev = dev->next) {
-        if (dev->config_info && (strcmp(dev->config_info, config_info) == 0))
-            return TRUE;
-    }
-
-    return FALSE;
 }
 
 struct OdevAttributes *

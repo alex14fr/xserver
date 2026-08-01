@@ -30,13 +30,11 @@
 #include <X11/X.h>
 #include <X11/Xproto.h>
 
-#include "misc.h"
-
 #include "dix/colormap_priv.h"
 #include "dix/screen_hooks_priv.h"
+#include "include/misc.h"
 #include "mi/mi_priv.h"
 
-#include "misc.h"
 #include "scrnintstr.h"
 #include "resource.h"
 
@@ -58,12 +56,12 @@
 #define SCREEN_PROLOGUE(pScreen, field) ((pScreen)->field = \
     ((CMapScreenPtr)dixLookupPrivate(&(pScreen)->devPrivates, CMapScreenKey))->field)
 #define SCREEN_EPILOGUE(pScreen, field, wrapper)\
-    ((pScreen)->field = wrapper)
+    ((pScreen)->field = (wrapper))
 
 #define LOAD_PALETTE(pmap) \
-    ((pmap == GetInstalledmiColormap(pmap->pScreen)) && \
+    (((pmap) == GetInstalledmiColormap((pmap)->pScreen)) && \
      ((pScreenPriv->flags & CMAP_LOAD_EVEN_IF_OFFSCREEN) || \
-      xf86ScreenToScrn(pmap->pScreen)->vtSema || pScreenPriv->isDGAmode))
+      xf86ScreenToScrn((pmap)->pScreen)->vtSema || pScreenPriv->isDGAmode))
 
 typedef struct _CMapLink {
     ColormapPtr cmap;

@@ -52,10 +52,12 @@ typedef struct {
     /* Optional 2 function that maps a glamor_egl_priv_t to each screen*/
     glamor_egl_priv_t* (*GLAMOR_EGL_PRIV_PROC)(ScreenPtr screen);
 
-    char *glvnd_vendor; /* glvnd vendor library or driver name */
+    const char *glvnd_vendor; /* glvnd vendor library or driver name */
     int fd; /* /dev/dri/cardxx */
+    int gbm_forbidden; /* If glamor should not use libgbm, even if available */
 
     int auto_dri; /* If glamor should try to automatically enable DRI3 support */
+    int partial_dri_allowed; /* If glamor should initialize DRI3, even if only some operations are available */
 
     int dmabuf_forced; /* If glamor should not use dynamic logic and only listen to the config below */
     int dmabuf_capable; /* If glamor should use dmabufs when using direct rendering (dri) */

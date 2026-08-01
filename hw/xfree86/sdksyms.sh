@@ -188,7 +188,6 @@ cat > sdksyms.c << EOF
 #include "mizerarc.h"
 #include "micoord.h"
 #include "mistruct.h"
-#include "mioverlay.h"
 
 
 /* randr/Makefile.am */
@@ -204,7 +203,7 @@ cat > sdksyms.c << EOF
 #include "compositeext.h"
 
 /* xfixes/Makefile.am */
-#include "xfixes.h"
+#include "Xext/xfixes/xfixes.h"
 
 
 /* include/Makefile.am */

@@ -31,6 +31,7 @@ fbdevInitAccel(ScreenPtr pScreen)
     KdScreenInfo *screen = pScreenPriv->screen;
     FbdevScrPriv *scrpriv = screen->driver;
     FbScreenConf *config = screen->card->closure;
+    int caps = GLAMOR_EGL_CAP_NONE;
 
     if (config->fbdev_dri_path) {
         scrpriv->dri_fd = open(config->fbdev_dri_path, O_RDWR);
@@ -57,14 +58,16 @@ fbdevInitAccel(ScreenPtr pScreen)
                                          .screen = pScreen,
                                          .glvnd_vendor = config->fbdev_glvnd_provider,
                                          .fd = scrpriv->dri_fd,
+                                         .gbm_forbidden = !config->gbm_allowed,
                                          .auto_dri = config->fbdev_auto_dri3,
+                                         .partial_dri_allowed = config->partial_dri_allowed,
                                          .llvmpipe_allowed = TRUE,
                                          .force_glamor = TRUE,
                                          .es_disallowed = !config->es_allowed,
                                          .force_es = config->force_es,
                                         };
 
-    if (!glamor_egl_init_internal(&glamor_egl_conf, NULL)) {
+    if (!glamor_egl_init_internal(&glamor_egl_conf, &caps)) {
         return FALSE;
     }
 
@@ -93,6 +96,26 @@ fbdevInitAccel(ScreenPtr pScreen)
     if (!glamor_init(pScreen, flags)) {
         return FALSE;
     }
+
+    LogMessage(X_INFO, "Xfbdev(%d): DRI3 import %s\n", pScreen->myNum,
+               (caps & GLAMOR_EGL_CAP_DRI3_IMPORT) ?
+               "available" : "unavailable");
+
+    LogMessage(X_INFO, "Xfbdev(%d): DRI3 export %s\n", pScreen->myNum,
+               (caps & GLAMOR_EGL_CAP_DRI3_EXPORT) ?
+               "available" : "unavailable");
+
+#if 0 /* Not yet implemented */
+    LogMessage(X_INFO, "Xfbdev(%d): DRI3 explicit sync %s\n", pScreen->myNum,
+               (caps & GLAMOR_EGL_CAP_DRI3_SYNCOBJ) ?
+               "available" : "unavailable");
+#endif
+
+#if 0 /* We don't care about this one */
+    LogMessage(X_INFO, "Xfbdev(%d): GBM bo's %s be textured\n", pScreen->myNum,
+               (caps & GLAMOR_EGL_CAP_TEXTURE_GBM_BO) ?
+               "can" : "cannot");
+#endif
 
 #ifdef XV
     /* X-Video needs glamor render accel */

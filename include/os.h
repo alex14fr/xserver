@@ -95,8 +95,8 @@ typedef struct _NewClientRec *NewClientPtr;
 #define xnfcalloc(_num, _size) XNFcallocarray((_num), (_size))
 #define xnfrealloc(ptr, size) XNFrealloc((void *)(ptr), (unsigned long)(size))
 
-#define xstrdup(s) Xstrdup(s)
-#define xnfstrdup(s) XNFstrdup(s)
+#define xstrdup(s) Xstrdup((s))
+#define xnfstrdup(s) XNFstrdup((s))
 #endif
 
 #include <stdio.h>
@@ -104,6 +104,19 @@ typedef struct _NewClientRec *NewClientPtr;
 
 extern _X_EXPORT int ReadFdFromClient(ClientPtr client);
 
+/**
+ * @brief write @p count bytes from @p buf into the client's output buffer
+ *
+ * @deprecated Legacy entry point, kept for ABI compatibility. Drivers and
+ *             external modules should not write to clients directly; this
+ *             remains exported only for existing out-of-tree users. In-tree
+ *             code uses the internal dixWriteToClient() worker instead.
+ *
+ * @param who    the client to write to
+ * @param count  number of bytes to write
+ * @param buf    data to write
+ * @return       number of bytes buffered, 0 on no-op, -1 on error
+ */
 extern _X_EXPORT int WriteToClient(ClientPtr /*who */ , int /*count */ ,
                                    const void * /*buf */ );
 
@@ -217,17 +230,11 @@ extern _X_EXPORT void *
 reallocarray(void *optr, size_t nmemb, size_t size);
 #endif
 
-#ifndef HAVE_STRCASESTR
-#define strcasestr xstrcasestr
-extern _X_EXPORT char *
-xstrcasestr(const char *s, const char *find);
-#endif
-
 #ifndef HAVE_STRLCPY
 extern _X_EXPORT size_t
-strlcpy(char *dst, const char *src, size_t siz);
+strlcpy(char * _X_RESTRICT_KYWD dst, const char * _X_RESTRICT_KYWD src, size_t siz);
 extern _X_EXPORT size_t
-strlcat(char *dst, const char *src, size_t siz);
+strlcat(char * _X_RESTRICT_KYWD dst, const char * _X_RESTRICT_KYWD src, size_t siz);
 #endif
 
 #ifndef HAVE_STRNDUP

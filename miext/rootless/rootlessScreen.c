@@ -42,6 +42,7 @@
 #include "include/colormapst.h"
 #include "include/mipict.h"
 #include "mi/mi_priv.h"
+#include "os/mathx_priv.h"
 
 #include "scrnintstr.h"
 #include "gcstruct.h"
@@ -52,6 +53,30 @@
 
 #include "rootlessCommon.h"
 #include "rootlessWindow.h"
+
+/*
+ * Render operations use PictFormat to describe pixel layout.  Depth-24
+ * windows use PICT_x8r8g8b8, where 'x' tells pixman the high byte is
+ * padding it may freely zero.  The compositor needs this byte to be 0xFF
+ * (opaque).  Temporarily upgrading the destination format from 'x' to 'a'
+ * prevents pixman from optimizing away the alpha channel, paralleling how
+ * ROOTLESS_PROTECT_ALPHA prevents fb from doing the same for GC ops.
+ */
+
+#if ROOTLESS_PROTECT_ALPHA
+#define RL_RENDER_SAVE_FORMAT(pict)                              \
+    CARD32 _saved_format = (pict)->format;                       \
+    if ((pict)->pDrawable->type == DRAWABLE_WINDOW &&            \
+        (pict)->format == PICT_x8r8g8b8)                         \
+        (pict)->format = PICT_a8r8g8b8
+
+#define RL_RENDER_RESTORE_FORMAT(pict) \
+    (pict)->format = _saved_format
+
+#else
+#define RL_RENDER_SAVE_FORMAT(pict)
+#define RL_RENDER_RESTORE_FORMAT(pict)
+#endif
 
 extern int RootlessMiValidateTree(WindowPtr pRoot, WindowPtr pChild,
                                   VTKind kind);
@@ -170,10 +195,10 @@ RootlessGetImage(DrawablePtr pDrawable, int sx, int sy, int w, int h,
         x1 = x0 + w;
         y1 = y0 + h;
 
-        x0 = max(x0, winRec->x);
-        y0 = max(y0, winRec->y);
-        x1 = min(x1, winRec->x + winRec->width);
-        y1 = min(y1, winRec->y + winRec->height);
+        x0 = MAX(x0, winRec->x);
+        y0 = MAX(y0, winRec->y);
+        x1 = MIN(x1, winRec->x + winRec->width);
+        y1 = MIN(y1, winRec->y + winRec->height);
 
         sx = x0 - pDrawable->x;
         sy = y0 - pDrawable->y;
@@ -241,8 +266,10 @@ RootlessComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask, PicturePtr pDst,
     if (dstWin && IsFramedWindow(dstWin))
         RootlessStartDrawing(dstWin);
 
+    RL_RENDER_SAVE_FORMAT(pDst);
     ps->Composite(op, pSrc, pMask, pDst,
                   xSrc, ySrc, xMask, yMask, xDst, yDst, width, height);
+    RL_RENDER_RESTORE_FORMAT(pDst);
 
     if (dstWin && IsFramedWindow(dstWin)) {
         RootlessDamageRect(dstWin, xDst, yDst, width, height);
@@ -276,7 +303,9 @@ RootlessGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
 
     //SCREEN_UNWRAP(ps, Glyphs);
     ps->Glyphs = SCREENREC(pScreen)->Glyphs;
+    RL_RENDER_SAVE_FORMAT(pDst);
     ps->Glyphs(op, pSrc, pDst, maskFormat, xSrc, ySrc, nlist, list, glyphs);
+    RL_RENDER_RESTORE_FORMAT(pDst);
     ps->Glyphs = RootlessGlyphs;
     //SCREEN_WRAP(ps, Glyphs);
 
@@ -316,10 +345,10 @@ RootlessGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
                     x2 = x1 + glyph->info.width;
                     y2 = y1 + glyph->info.height;
 
-                    box.x1 = min(box.x1, x1);
-                    box.y1 = min(box.y1, y1);
-                    box.x2 = max(box.x2, x2);
-                    box.y2 = max(box.y2, y2);
+                    box.x1 = MIN(box.x1, x1);
+                    box.y1 = MIN(box.y1, y1);
+                    box.x2 = MAX(box.x2, x2);
+                    box.y2 = MAX(box.y2, y2);
 
                     x += glyph->info.xOff;
                     y += glyph->info.yOff;
@@ -353,7 +382,9 @@ RootlessTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     if (dstWin && IsFramedWindow(dstWin))
         RootlessStartDrawing(dstWin);
 
+    RL_RENDER_SAVE_FORMAT(pDst);
     ps->Trapezoids(op, pSrc, pDst, maskFormat, xSrc, ySrc, ntrap, traps);
+    RL_RENDER_RESTORE_FORMAT(pDst);
 
     if (dstWin && IsFramedWindow(dstWin) && ntrap > 0) {
         BoxRec box;
@@ -393,7 +424,9 @@ RootlessTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     if (dstWin && IsFramedWindow(dstWin))
         RootlessStartDrawing(dstWin);
 
+    RL_RENDER_SAVE_FORMAT(pDst);
     ps->Triangles(op, pSrc, pDst, maskFormat, xSrc, ySrc, ntri, tris);
+    RL_RENDER_RESTORE_FORMAT(pDst);
 
     if (dstWin && IsFramedWindow(dstWin) && ntri > 0) {
         BoxRec box;
@@ -428,7 +461,9 @@ RootlessCompositeRects(CARD8 op, PicturePtr pDst, xRenderColor *color,
     if (dstWin && IsFramedWindow(dstWin))
         RootlessStartDrawing(dstWin);
 
+    RL_RENDER_SAVE_FORMAT(pDst);
     ps->CompositeRects(op, pDst, color, nRect, rects);
+    RL_RENDER_RESTORE_FORMAT(pDst);
 
     if (dstWin && IsFramedWindow(dstWin) && nRect > 0) {
         int i;

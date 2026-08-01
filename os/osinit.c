@@ -59,13 +59,13 @@ SOFTWARE.
 #endif
 
 #include "dix/dix_priv.h"
+#include "include/misc.h"
 #include "os/busfault.h"
 #include "os/ddx_priv.h"
 #include "os/log_priv.h"
 #include "os/osdep.h"
 #include "os/serverlock.h"
 
-#include "misc.h"
 #include "os.h"
 #include "opaque.h"
 #include "dixstruct.h"
@@ -218,10 +218,10 @@ OsInit(void)
         been_here = TRUE;
     }
     TimerInit();
-    OsVendorInit();
+    ddxInit();
     OsResetSignals();
     /*
-     * No log file by default.  OsVendorInit() should call LogInit() with the
+     * No log file by default.  ddxInit() should call LogInit() with the
      * log file name if logging to a file is desired.
      */
     LogInit(NULL, NULL);

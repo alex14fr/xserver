@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright 1987 by Digital Equipment Corporation, Maynard, Massachusetts.
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
@@ -83,7 +83,7 @@ static inline Bool any_output_pending(void) {
 void SmartScheduleInit(void);
 
 /* This prototype is used pervasively in Xext, dix */
-#define DISPATCH_PROC(func) int func(ClientPtr /* client */)
+#define DISPATCH_PROC(func) int (func)(ClientPtr /* client */)
 
 /* proc vectors */
 

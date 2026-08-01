@@ -47,6 +47,7 @@ SOFTWARE.
 
 #include <dix-config.h>
 
+#include <stdbool.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
 #include <X11/extensions/XI2.h>
@@ -59,14 +60,14 @@ SOFTWARE.
 #include "dix/inpututils_priv.h"
 #include "dix/resource_priv.h"
 #include "dix/window_priv.h"
+#include "include/misc.h"
 #include "os/auth.h"
 #include "os/client_priv.h"
+#include "Xext/xinput/exglobals.h"
 
-#include "misc.h"
 #include "windowstr.h"
 #include "inputstr.h"
 #include "cursorstr.h"
-#include "exglobals.h"
 
 #define MasksPerDetailMask 8    /* 256 keycodes and 256 possible
                                    modifier combinations, but only
@@ -74,10 +75,10 @@ SOFTWARE.
 
 #define BITMASK(i) (((Mask)1) << ((i) & 31))
 #define MASKIDX(i) ((i) >> 5)
-#define MASKWORD(buf, i) buf[MASKIDX(i)]
-#define BITSET(buf, i) MASKWORD(buf, i) |= BITMASK(i)
-#define BITCLEAR(buf, i) MASKWORD(buf, i) &= ~BITMASK(i)
-#define GETBIT(buf, i) (MASKWORD(buf, i) & BITMASK(i))
+#define MASKWORD(buf, i) (buf)[MASKIDX((i))]
+#define BITSET(buf, i) MASKWORD((buf), (i)) |= BITMASK((i))
+#define BITCLEAR(buf, i) MASKWORD((buf), (i)) &= ~BITMASK((i))
+#define GETBIT(buf, i) (MASKWORD((buf), (i)) & BITMASK((i)))
 
 void
 PrintDeviceGrabInfo(DeviceIntPtr dev)
@@ -85,7 +86,7 @@ PrintDeviceGrabInfo(DeviceIntPtr dev)
     LocalClientCredRec *lcc;
     GrabInfoPtr devGrab = &dev->deviceGrab;
     GrabPtr grab = devGrab->grab;
-    Bool clientIdPrinted = FALSE;
+    bool clientIdPrinted = FALSE;
 
     ErrorF("Active grab 0x%lx (%s) on device '%s' (%d):\n",
            (unsigned long) grab->resource,
@@ -576,12 +577,12 @@ DeletePassiveGrabFromList(GrabPtr pMinuendGrab)
     GrabPtr *deletes, *adds;
     Mask ***updates, **details;
     int i, ndels, nadds, nups;
-    Bool ok;
+    bool ok;
     unsigned int any_modifier;
     unsigned int any_key;
 
 #define UPDATE(mask,exact) \
-	if (!(details[nups] = DeleteDetailFromMask(mask, exact))) \
+	if (!(details[nups] = DeleteDetailFromMask((mask), (exact)))) \
 	  ok = FALSE; \
 	else \
 	  updates[nups++] = &(mask)

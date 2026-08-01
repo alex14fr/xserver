@@ -79,18 +79,14 @@ SOFTWARE.
 #endif
 
 /* some DDXes must explicitly prohibit some extensions */
-#ifdef DISABLE_EXT_DPMS
-#undef DPMSExtension
-#endif
-
 #ifdef DISABLE_EXT_MITSHM
 #undef MITSHM
 #undef CONFIG_MITSHM
 #endif
 
+#include "include/misc.h"
 #include "miext/extinit_priv.h"
 
-#include "misc.h"
 #include "extension.h"
 #include "micmap.h"
 #include "os.h"
@@ -124,9 +120,6 @@ static const ExtensionModule staticExtensions[] = {
 #endif /* XINERAMA */
     /* must be before Render to layer DisplayCursor correctly */
     {XFixesExtensionInit, "XFIXES", &noXFixesExtension},
-#ifdef XF86BIGFONT
-    {XFree86BigfontExtensionInit, "XFree86-Bigfont", &noXFree86BigfontExtension},
-#endif
     {RenderExtensionInit, "RENDER", &noRenderExtension},
 #ifdef RANDR
     {RRExtensionInit, "RANDR", &noRRExtension},

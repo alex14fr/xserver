@@ -47,7 +47,8 @@ SOFTWARE.
 
 #include <X11/X.h>
 
-#include "misc.h"
+#include "include/misc.h"
+
 #include "scrnintstr.h"
 #include "gcstruct.h"
 #include "windowstr.h"
@@ -75,10 +76,10 @@ SOFTWARE.
 
 #define MI_OUTPUT_POINT(xx, yy)\
 {\
-    if ( !new_span && yy == current_y)\
+    if ( !new_span && (yy) == current_y)\
     {\
-        if (xx < spans->x)\
-	    spans->x = xx;\
+        if ((xx) < spans->x)\
+	    spans->x = (xx);\
 	++*widths;\
     }\
     else\
@@ -86,10 +87,10 @@ SOFTWARE.
         ++Nspans;\
 	++spans;\
 	++widths;\
-	spans->x = xx;\
-	spans->y = yy;\
+	spans->x = (xx);\
+	spans->y = (yy);\
 	*widths = 1;\
-	current_y = yy;\
+	current_y = (yy);\
         new_span = FALSE;\
     }\
 }

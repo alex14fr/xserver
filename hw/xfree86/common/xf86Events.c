@@ -50,6 +50,7 @@
 /* [JCH-96/01/21] Extended std reverse map to four buttons. */
 #include <xorg-config.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
@@ -60,12 +61,13 @@
 
 #include "dix/dix_priv.h"
 #include "dix/input_priv.h"
+#include "include/misc.h"
 #include "include/property.h"
 #include "hw/xfree86/common/action_priv.h"
 #include "mi/mi_priv.h"
 #include "os/log_priv.h"
+#include "Xext/dpms/dpms_priv.h"
 
-#include "misc.h"
 #include "xf86_priv.h"
 #include "xf86Priv.h"
 #include "xf86_os_support.h"
@@ -85,7 +87,6 @@
 
 #ifdef DPMSExtension
 #include <X11/extensions/dpmsconst.h>
-#include "dpmsproc.h"
 #endif
 
 #include "../os-support/linux/systemd-logind.h"
@@ -312,8 +313,9 @@ static void xf86DisableInputDeviceForVTSwitch(InputInfoPtr pInfo)
 
     xf86ReleaseKeys(pInfo->dev);
     ProcessInputEvents();
-    seatd_libseat_close_device(pInfo);
+    /* DEVICE_OFF reads pInfo->fd, disable before releasing the seatd fd */
     DisableDevice(pInfo->dev, TRUE);
+    seatd_libseat_close_device(pInfo);
 }
 
 void

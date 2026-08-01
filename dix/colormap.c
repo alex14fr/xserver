@@ -58,10 +58,11 @@ SOFTWARE.
 #include "dix/dix_priv.h"
 #include "dix/resource_priv.h"
 #include "dix/window_priv.h"
+#include "include/misc.h"
 #include "os/osdep.h"
 #include "os/bug_priv.h"
+#include "Xext/panoramiX/panoramiX_priv.h"
 
-#include "misc.h"
 #include "dix.h"
 #include "dixstruct.h"
 #include "os.h"
@@ -186,12 +187,12 @@ static void FindColorInRootCmap(ColormapPtr /* pmap */ ,
                                 ColorCompareProcPtr     /* comp */
     );
 
-#define NUMRED(vis) ((vis->redMask >> vis->offsetRed) + 1)
-#define NUMGREEN(vis) ((vis->greenMask >> vis->offsetGreen) + 1)
-#define NUMBLUE(vis) ((vis->blueMask >> vis->offsetBlue) + 1)
+#define NUMRED(vis) (((vis)->redMask >> (vis)->offsetRed) + 1)
+#define NUMGREEN(vis) (((vis)->greenMask >> (vis)->offsetGreen) + 1)
+#define NUMBLUE(vis) (((vis)->blueMask >> (vis)->offsetBlue) + 1)
 #define ALPHAMASK(vis)	((vis)->nplanes < 32 ? 0 : \
 			 (CARD32) ~((vis)->redMask|(vis)->greenMask|(vis)->blueMask))
-#define RGBMASK(vis) (vis->redMask | vis->greenMask | vis->blueMask | ALPHAMASK(vis))
+#define RGBMASK(vis) ((vis)->redMask | (vis)->greenMask | (vis)->blueMask | ALPHAMASK((vis)))
 
 /* GetNextBitsOrBreak(bits, mask, base)  --
  * (Suggestion: First read the macro, then read this explanation.
@@ -470,7 +471,7 @@ TellNoMap(WindowPtr pwin, Colormap * pmid)
         };
         xE.u.u.type = ColormapNotify;
 #ifdef XINERAMA
-        if (noPanoramiXExtension || !pwin->drawable.pScreen->myNum)
+        if (PanoramiXIsDisabled() || !pwin->drawable.pScreen->myNum)
 #endif /* XINERAMA */
             DeliverEvents(pwin, &xE, 1, (WindowPtr) NULL);
         if (pwin->optional) {
@@ -488,10 +489,10 @@ TellLostMap(WindowPtr pwin, void *value)
 {
     Colormap *pmid = (Colormap *) value;
 
-#ifdef XINERAMA
-    if (!noPanoramiXExtension && pwin->drawable.pScreen->myNum)
+    if (PanoramiXIsEnabled() && pwin->drawable.pScreen->myNum) {
         return WT_STOPWALKING;
-#endif /* XINERAMA */
+    }
+
     if (wColormap(pwin) == *pmid) {
         /* This should be call to DeliverEvent */
         xEvent xE = {
@@ -514,9 +515,11 @@ TellGainedMap(WindowPtr pwin, void *value)
     Colormap *pmid = (Colormap *) value;
 
 #ifdef XINERAMA
-    if (!noPanoramiXExtension && pwin->drawable.pScreen->myNum)
+    if (PanoramiXIsEnabled() && pwin->drawable.pScreen->myNum) {
         return WT_STOPWALKING;
-#endif /* XINERAMA */
+    }
+#endif
+
     if (wColormap(pwin) == *pmid) {
         /* This should be call to DeliverEvent */
         xEvent xE = {
@@ -1213,8 +1216,8 @@ typedef struct _bignum {
 #define BigNumGreater(x,y) (((x)->upper > (y)->upper) ||\
 			    ((x)->upper == (y)->upper && (x)->lower > (y)->lower))
 
-#define UnsignedToBigNum(u,r)	(((r)->upper = UPPERPART(u)), \
-				 ((r)->lower = LOWERPART(u)))
+#define UnsignedToBigNum(u,r)	(((r)->upper = UPPERPART((u))), \
+				 ((r)->lower = LOWERPART((u))))
 
 #define MaxBigNum(r)		(((r)->upper = BIGNUMUPPER-1), \
 				 ((r)->lower = BIGNUMLOWER-1))
@@ -1290,7 +1293,7 @@ FindColorInRootCmap(ColormapPtr pmap, EntryPtr pentFirst, int size,
 
     if ((pixel = *pPixel) >= size)
         pixel = 0;
-    for (pent = pentFirst + pixel, count = size; --count >= 0; pent++, pixel++) {
+    for (pent = pentFirst + pixel, count = size; --count >= 0;) {
         if (pent->refcnt > 0 && (*comp) (pent, prgb)) {
             switch (channel) {
             case REDMAP:
@@ -1307,6 +1310,13 @@ FindColorInRootCmap(ColormapPtr pmap, EntryPtr pentFirst, int size,
             }
             *pPixel = pixel;
         }
+        pixel++;
+        if (pixel >= size) {
+            pent = pentFirst;
+            pixel = 0;
+        }
+        else
+            pent++;
     }
 }
 
@@ -2462,19 +2472,17 @@ StoreColors(ColormapPtr pmap, int count, xColorItem * defs, ClientPtr client)
     return errVal;
 }
 
-int
-IsMapInstalled(Colormap map, WindowPtr pWin)
+bool IsMapInstalled(Colormap map, WindowPtr pWin)
 {
-    Colormap *pmaps;
-    int nummaps, found;
-
-    pmaps = calloc(pWin->drawable.pScreen->maxInstalledCmaps,
+    Colormap *pmaps = calloc(pWin->drawable.pScreen->maxInstalledCmaps,
                    sizeof(Colormap));
     if (!pmaps)
         return FALSE;
-    nummaps = (*pWin->drawable.pScreen->ListInstalledColormaps)
+
+    int nummaps = (*pWin->drawable.pScreen->ListInstalledColormaps)
         (pWin->drawable.pScreen, pmaps);
-    found = FALSE;
+
+    bool found = FALSE;
     for (int imap = 0; imap < nummaps; imap++) {
         if (pmaps[imap] == map) {
             found = TRUE;

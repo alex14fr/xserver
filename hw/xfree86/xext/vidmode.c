@@ -41,10 +41,10 @@ from Kaleb S. KEITHLEY
 #include "dix/request_priv.h"
 #include "dix/rpcbuf_priv.h"
 #include "dix/screenint_priv.h"
+#include "include/misc.h"
 #include "os/log_priv.h"
 #include "os/osdep.h"
 
-#include "misc.h"
 #include "dixstruct.h"
 #include "extnsionst.h"
 #include "scrnintstr.h"
@@ -71,7 +71,7 @@ typedef struct {
 #define VM_GETPRIV(c) ((VidModePrivPtr) \
     dixLookupPrivate(&(c)->devPrivates, VidModeClientPrivateKey))
 #define VM_SETPRIV(c,p) \
-    dixSetPrivate(&(c)->devPrivates, VidModeClientPrivateKey, p)
+    dixSetPrivate(&(c)->devPrivates, VidModeClientPrivateKey, (p))
 
 #ifdef DEBUG
 #define DEBUG_P(x) DebugF(x"\n")
@@ -384,15 +384,15 @@ ProcVidModeGetAllModeLines(ClientPtr client)
 }
 
 #define MODEMATCH(mode,stuff)	  \
-     (VidModeGetModeValue(mode, VIDMODE_H_DISPLAY)  == stuff->hdisplay \
-     && VidModeGetModeValue(mode, VIDMODE_H_SYNCSTART)  == stuff->hsyncstart \
-     && VidModeGetModeValue(mode, VIDMODE_H_SYNCEND)  == stuff->hsyncend \
-     && VidModeGetModeValue(mode, VIDMODE_H_TOTAL)  == stuff->htotal \
-     && VidModeGetModeValue(mode, VIDMODE_V_DISPLAY)  == stuff->vdisplay \
-     && VidModeGetModeValue(mode, VIDMODE_V_SYNCSTART)  == stuff->vsyncstart \
-     && VidModeGetModeValue(mode, VIDMODE_V_SYNCEND)  == stuff->vsyncend \
-     && VidModeGetModeValue(mode, VIDMODE_V_TOTAL)  == stuff->vtotal \
-     && VidModeGetModeValue(mode, VIDMODE_FLAGS)  == stuff->flags )
+     (VidModeGetModeValue((mode), VIDMODE_H_DISPLAY)  == (stuff)->hdisplay \
+     && VidModeGetModeValue((mode), VIDMODE_H_SYNCSTART)  == (stuff)->hsyncstart \
+     && VidModeGetModeValue((mode), VIDMODE_H_SYNCEND)  == (stuff)->hsyncend \
+     && VidModeGetModeValue((mode), VIDMODE_H_TOTAL)  == (stuff)->htotal \
+     && VidModeGetModeValue((mode), VIDMODE_V_DISPLAY)  == (stuff)->vdisplay \
+     && VidModeGetModeValue((mode), VIDMODE_V_SYNCSTART)  == (stuff)->vsyncstart \
+     && VidModeGetModeValue((mode), VIDMODE_V_SYNCEND)  == (stuff)->vsyncend \
+     && VidModeGetModeValue((mode), VIDMODE_V_TOTAL)  == (stuff)->vtotal \
+     && VidModeGetModeValue((mode), VIDMODE_FLAGS)  == (stuff)->flags )
 
 static int VidModeAddModeLine(ClientPtr client, xXF86VidModeAddModeLineReq* stuff);
 
@@ -1570,7 +1570,7 @@ ProcVidModeGetGammaRamp(ClientPtr client)
 
     if (stuff->size) {
         size_t ramplen = length * 3 * sizeof(CARD16);
-        CARD16 *ramp = x_rpcbuf_reserve(&rpcbuf, ramplen);
+        CARD16 *ramp = x_rpcbuf_reserve0(&rpcbuf, ramplen);
         if (!ramp)
             return BadAlloc;
 

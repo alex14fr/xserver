@@ -36,10 +36,10 @@
 #include <X11/Xmd.h>
 
 #include "dix/dix_priv.h"
+#include "include/misc.h"
 #include "os/auth.h"
 #include "os/ossock.h"
 
-#include "misc.h"
 #include "osdep.h"
 #include "xdmcp.h"
 #include "xdmauth.h"
@@ -1384,9 +1384,6 @@ get_addr_by_name(const char *argtype,
 #else /* HAVE_GETADDRINFO */
     struct hostent *hep;
 
-#ifdef XTHREADS_NEEDS_BYNAMEPARAMS
-    _Xgethostbynameparams hparams;
-#endif
     ossock_init();
     if (!(hep = _XGethostbyname(namestr, hparams))) {
         FatalError("Xserver: %s unknown host: %s\n", argtype, namestr);

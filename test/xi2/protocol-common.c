@@ -26,6 +26,7 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <stdint.h>
 #include <X11/extensions/XI2.h>
@@ -35,11 +36,11 @@
 #include "dix/exevents_priv.h"
 #include "dix/screenint_priv.h"
 #include "miext/extinit_priv.h"
-#include "xkb/xkbsrv_priv.h"    /* for XkbInitPrivates */
+#include "Xext/xkeyboard/xkbsrv_priv.h"    /* for XkbInitPrivates */
 
-#include "exglobals.h"
+#include "Xext/xinput/exglobals.h"
 #include "xserver-properties.h"
-#include "syncsrv.h"
+#include "Xext/sync/syncsrv.h"
 #include "protocol-common.h"
 
 struct devices devices;
@@ -284,9 +285,9 @@ init_simple(void)
     devices = init_devices();
 }
 
-WRAP_FUNCTION(WriteToClient, void, ClientPtr client, int len, void *data)
+WRAP_FUNCTION(dixWriteToClient, void, ClientPtr client, int len, void *data)
 {
-    IMPLEMENT_WRAP_FUNCTION(WriteToClient, client, len, data);
+    IMPLEMENT_WRAP_FUNCTION(dixWriteToClient, client, len, data);
 }
 
 WRAP_FUNCTION(XISetEventMask, int,

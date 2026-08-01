@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  + Copyright © 1987, 1998  The Open Group
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
@@ -365,7 +365,7 @@ void input_constrain_cursor(DeviceIntPtr pDev,
 
 void InputThreadPreInit(void);
 void InputThreadInit(void);
-void InputThreadFini(void);
+void InputThreadFinish(void);
 
 int InputThreadRegisterDev(int fd,
                            NotifyFdProcPtr readInputProc,

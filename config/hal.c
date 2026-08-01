@@ -31,8 +31,10 @@
 #include <dbus/dbus.h>
 #include <hal/libhal.h>
 
+#include "config/config-hal.h"
 #include "config/hotplug_priv.h"
 #include "config/dbus-core.h"
+#include "dix/inputdev_priv.h"
 #include "os/fmt.h"
 
 #include "input.h"
@@ -241,7 +243,8 @@ device_added(LibHalContext * hal_ctx, const char *udi)
     }
 
     /* Check for duplicate devices */
-    if (device_is_duplicate(config_info)) {
+    if (dixInputDeviceFindByConf(config_info) ||
+        dixInputDeviceOffFindByConf(config_info)) {
         LogMessage(X_WARNING,
                    "config/hal: device %s already added. Ignoring.\n", name);
         goto unwind;

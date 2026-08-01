@@ -30,6 +30,7 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
 #include <sys/stat.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
@@ -40,7 +41,7 @@
 #include "os/ddx_priv.h"
 #include "os/log_priv.h"
 #include "os/osdep.h"
-#include "xkb/xkbsrv_priv.h"
+#include "Xext/xkeyboard/xkbsrv_priv.h"
 
 #include "os.h"
 #include "servermd.h"
@@ -657,20 +658,11 @@ InitOutput(int argc, char **argv)
     DarwinAdjustScreenOrigins();
 }
 
-/*
- * OsVendorFatalError
- */
-void
-OsVendorFatalError(const char *f, va_list args)
+void ddxFatalError(const char *f, va_list args)
 {
 }
 
-/*
- * OsVendorInit
- *  Initialization of Darwin OS support.
- */
-void
-OsVendorInit(void)
+void ddxInit(void)
 {
         char *lf;
         char *home = getenv("HOME");

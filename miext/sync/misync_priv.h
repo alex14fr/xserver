@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  * Copyright © 2010 NVIDIA Corporation
@@ -16,7 +16,7 @@ typedef struct _syncScreenPriv {
 } SyncScreenPrivRec, *SyncScreenPrivPtr;
 
 #define SYNC_SCREEN_PRIV(pScreen)                               \
-    (SyncScreenPrivPtr) dixLookupPrivate(&pScreen->devPrivates, \
+    (SyncScreenPrivPtr) dixLookupPrivate(&(pScreen)->devPrivates, \
                                          &miSyncScreenPrivateKey)
 
 Bool miSyncFenceCheckTriggered(SyncFence * pFence);

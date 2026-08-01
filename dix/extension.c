@@ -53,8 +53,9 @@ SOFTWARE.
 #include "dix/extension_priv.h"
 #include "dix/registry_priv.h"
 #include "dix/request_priv.h"
+#include "include/misc.h"
+#include "os/mathx_priv.h"
 
-#include "misc.h"
 #include "dixstruct.h"
 #include "extnsionst.h"
 #include "gcstruct.h"
@@ -99,7 +100,6 @@ static struct { const char *name; int id; } reservedExt[] = {
     { "SYNC",                       EXTENSION_MAJOR_SYNC },
     { "Windows-DRI",                EXTENSION_MAJOR_WINDOWS_DRI },
     { "XFIXES",                     EXTENSION_MAJOR_XFIXES },
-    { "XFree86-Bigfont",            EXTENSION_MAJOR_XF86_BIGFONT },
     { "XFree86-DGA",                EXTENSION_MAJOR_XF86_DGA },
     { "XFree86-DRI",                EXTENSION_MAJOR_XF86_DRI },
     { "XFree86-VidModeExtension",   EXTENSION_MAJOR_XF86_VIDMODE },
@@ -299,7 +299,7 @@ ProcQueryExtension(ClientPtr client)
 
     if (NumExtensions && extensions) {
         char extname[PATH_MAX] = { 0 };
-        strncpy(extname, (char *) &stuff[1], min(stuff->nbytes, sizeof(extname)-1));
+        strncpy(extname, (char *) &stuff[1], MIN(stuff->nbytes, sizeof(extname)-1));
         ExtensionEntry *extEntry = CheckExtension(extname);
 
         if (extEntry && ExtensionAvailable(client, extEntry)) {

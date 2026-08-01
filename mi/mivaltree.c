@@ -94,13 +94,13 @@ Equipment Corporation.
 
 #include "dix/window_priv.h"
 #include "mi/mi_priv.h"
+#include "Xext/composite/compositeext_priv.h"
 
 #include    "scrnintstr.h"
 #include    "validate.h"
 #include    "windowstr.h"
 #include    "regionstr.h"
 #include    "globals.h"
-#include    "compint.h"
 
 /*
  * Compute the visibility of a shaped window
@@ -168,7 +168,7 @@ miShapedWindowIn(RegionPtr universe, RegionPtr bounding,
 #define TreatAsTransparent(w)	((w)->redirectDraw == RedirectDrawManual)
 
 #define HasParentRelativeBorder(w) (!(w)->borderIsPixel && \
-				    HasBorder(w) && \
+				    HasBorder((w)) && \
 				    (w)->backgroundState == ParentRelative)
 
 /*

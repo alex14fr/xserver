@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  */
@@ -8,6 +8,7 @@
 #ifndef _XSERVER_XF86_OS_SUPPORT
 #define _XSERVER_XF86_OS_SUPPORT
 
+#include <stdbool.h>
 #include <X11/Xdefs.h>
 
 #include "os.h"
@@ -21,10 +22,10 @@
 
 #define xf86FatalError(a, b) \
 	if (dispatchException & DE_TERMINATE) { \
-		ErrorF(a, b); \
+		ErrorF((a), (b)); \
 		ErrorF("\n"); \
 		return; \
-	} else FatalError(a, b)
+	} else FatalError((a), (b))
 
 typedef void (*PMClose) (void);
 
@@ -38,7 +39,7 @@ Bool xf86VTKeepTtyIsSet(void);
 
 Bool xf86VTActivate(int vtno);
 Bool xf86VTSwitchPending(void);
-Bool xf86VTSwitchAway(void);
+bool xf86VTSwitchAway(void);
 Bool xf86VTSwitchTo(void);
 void xf86VTRequest(int sig);
 int xf86ProcessArgument(int argc, char **argv, int i);

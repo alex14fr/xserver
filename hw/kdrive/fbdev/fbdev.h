@@ -29,11 +29,10 @@
 #include <sys/mman.h>
 #include "kdrive.h"
 
-#ifdef RANDR
-#include "randrstr.h"
-#endif
+#include "include/randrstr.h"
 
 typedef struct _fbdevPriv {
+    struct fb_var_screeninfo saved_var;
     struct fb_var_screeninfo var;
     struct fb_fix_screeninfo fix;
     __u16 red[256];
@@ -47,6 +46,8 @@ typedef struct _fbdevPriv {
 typedef struct _fbdevScrPriv {
     Rotation randr;
     Bool shadow;
+    int max_width;
+    int max_height;
 #ifdef GLAMOR
     int dri_fd;
 #endif
@@ -54,24 +55,23 @@ typedef struct _fbdevScrPriv {
 
 typedef struct _fbScreenConf {
 const char *fbdevDevicePath;
-Bool fbDisableShadow;
+bool fbDisableShadow;
 
-#ifdef GLAMOR
 char *fbdev_glvnd_provider;
 
 char *fbdev_dri_path;
 bool fbdev_auto_dri3;
 bool fbdev_drm_master;
+bool partial_dri_allowed;
 
 bool es_allowed;
 bool force_es;
 
 bool fbGlamorAllowed;
 bool fbForceGlamor;
-#ifdef XV
+bool gbm_allowed;
+
 bool fbXVAllowed;
-#endif
-#endif
 } FbScreenConf;
 
 extern KdCardFuncs fbdevFuncs;

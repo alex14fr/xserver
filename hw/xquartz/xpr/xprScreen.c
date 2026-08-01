@@ -33,13 +33,13 @@
 
 #include "dix/screenint_priv.h"
 #include "miext/extinit_priv.h"
+#include "Xext/pseudoramiX/pseudoramiX.h"
 
 #include "inputstr.h"
 #include "quartz.h"
 #include "quartzRandR.h"
 #include "xpr.h"
 #include "xprEvent.h"
-#include "pseudoramiX.h"
 #include "darwinEvents.h"
 #include "rootless.h"
 #include "xpr_dri.h"
@@ -318,6 +318,11 @@ xprAddScreen(int index, ScreenPtr pScreen)
     DEBUG_LOG("index=%d depth=%d\n", index, depth);
 
     if (depth == -1) {
+/* Modern CG APIs may not work on 10.6 ppc */
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1060 || defined(__ppc__)
+        depth = CGDisplaySamplesPerPixel(kCGDirectMainDisplay) *
+                CGDisplayBitsPerSample(kCGDirectMainDisplay);
+#else
         CGDisplayModeRef modeRef;
         CFStringRef encStrRef;
 
@@ -347,9 +352,12 @@ xprAddScreen(int index, ScreenPtr pScreen)
         }
 
         CFRelease(encStrRef);
+#endif
     }
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060 && !defined(__ppc__)
 have_depth:
+#endif
     switch (depth) {
     case 8:     // pseudo-working
         dfb->visuals = PseudoColorMask;

@@ -26,6 +26,8 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
+
 /*
  * Protocol testing for XIGetSelectedEvents request.
  *
@@ -44,7 +46,8 @@
 
 #include "dix/exevents_priv.h"
 #include "miext/extinit_priv.h"            /* for XInputExtensionInit */
-#include "Xi/handlers.h"
+#include "os/mathx_priv.h"
+#include "Xext/xinput/handlers.h"
 
 #include "inputstr.h"
 #include "windowstr.h"
@@ -52,7 +55,7 @@
 
 #include "protocol-common.h"
 
-DECLARE_WRAP_FUNCTION(WriteToClient, void, ClientPtr client, int len, void *data);
+DECLARE_WRAP_FUNCTION(dixWriteToClient, void, ClientPtr client, int len, void *data);
 DECLARE_WRAP_FUNCTION(AddResource, Bool, XID id, RESTYPE type, void *value);
 
 static void reply_XIGetSelectedEvents(ClientPtr client, int len, void *data);
@@ -91,7 +94,7 @@ reply_XIGetSelectedEvents(ClientPtr client, int len, void *data)
 
     assert(reply.num_masks == test_data.num_masks_expected);
 
-    wrapped_WriteToClient = reply_XIGetSelectedEvents_data;
+    wrapped_dixWriteToClient = reply_XIGetSelectedEvents_data;
 }
 
 static void
@@ -132,12 +135,12 @@ request_XIGetSelectedEvents(xXIGetSelectedEventsReq * req, int error)
 
     client = init_client(req->length, req);
 
-    wrapped_WriteToClient = reply_XIGetSelectedEvents;
+    wrapped_dixWriteToClient = reply_XIGetSelectedEvents;
 
     rc = ProcXIGetSelectedEvents(&client);
     assert(rc == error);
 
-    wrapped_WriteToClient = reply_XIGetSelectedEvents;
+    wrapped_dixWriteToClient = reply_XIGetSelectedEvents;
     client.swapped = TRUE;
 
     /* MUST NOT swap req->length here !
@@ -193,7 +196,7 @@ test_XIGetSelectedEvents(void)
     /* devices 6 - MAXDEVICES don't exist, they mustn't be included in the
      * reply even if a mask is set */
     for (j = 0; j < MAXDEVICES; j++) {
-        test_data.num_masks_expected = min(j + 1, devices.num_devices + 2);
+        test_data.num_masks_expected = MIN(j + 1, devices.num_devices + 2);
         dev.id = j;
         mask = test_data.mask[j];
         /* bits one-by-one */

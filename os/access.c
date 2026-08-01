@@ -84,17 +84,17 @@ SOFTWARE.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "os/Xtrans.h"
+#include <errno.h>
+#include <sys/types.h>
 #include <X11/Xauth.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
-#include "misc.h"
-#include <errno.h>
-#include <sys/types.h>
 
 #include "dix/server_priv.h"
+#include "include/misc.h"
 #include "os/io_priv.h"
 #include "os/xhostname.h"
+#include "os/Xtrans.h"
 
 #ifndef WIN32
 #include <sys/socket.h>
@@ -122,9 +122,6 @@ SOFTWARE.
 #include <sys/un.h>
 #endif
 
-#if defined(SVR4) || defined(__GNU__)
-#include <sys/utsname.h>
-#endif
 #ifdef __GNU__
 #undef SIOCGIFCONF
 #include <netdb.h>
@@ -132,14 +129,16 @@ SOFTWARE.
 #include <net/if.h>
 #endif /*__GNU__ */
 
-#ifdef SVR4
+#ifdef HAVE_SYS_SOCKIO_H
 #include <sys/sockio.h>
+#endif
+#ifdef HAVE_SYS_STROPTS_H
 #include <sys/stropts.h>
 #endif
 
 #include <netdb.h>
 
-#ifdef CSRG_BASED
+#ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #if (BSD >= 199103)
 #define VARIABLE_IFREQ
@@ -190,7 +189,7 @@ Bool defeatAccessControl = FALSE;
 #define addrEqual(fam, address, length, host) \
 			 ((fam) == (host)->family &&\
 			  (length) == (host)->len &&\
-			  !memcmp (address, (host)->addr, length))
+			  !memcmp ((address), (host)->addr, (length)))
 
 static int ConvertAddr(struct sockaddr * /*saddr */ ,
                        int * /*len */ ,
@@ -221,11 +220,11 @@ typedef struct _host {
 } HOST;
 
 #define MakeHost(h,l)	(h)=calloc(1, sizeof *(h)+(l));\
-			if (h) { \
+			if ((h)) { \
 			   (h)->addr=(unsigned char *) ((h) + 1);\
 			   (h)->requested = FALSE; \
 			}
-#define FreeHost(h)	free(h)
+#define FreeHost(h)	free((h))
 static HOST *selfhosts = NULL;
 static HOST *validhosts = NULL;
 static int AccessEnabled = TRUE;
@@ -422,10 +421,6 @@ DefineSelf(int fd)
 #endif
     struct sockaddr_in broad_addr;
 
-#ifdef XTHREADS_NEEDS_BYNAMEPARAMS
-    _Xgethostbynameparams hparams;
-#endif
-
     /* Why not use gethostname()?  Well, at least on my system, I've had to
      * make an ugly kernel patch to get a name longer than 8 characters, and
      * uname() lets me access to the whole string (it smashes release, you
@@ -526,9 +521,9 @@ DefineSelf(int fd)
 
 #ifdef VARIABLE_IFREQ
 #define ifr_size(p) (sizeof (struct ifreq) + \
-		     (p->ifr_addr.sa_len > sizeof (p->ifr_addr) ? \
-		      p->ifr_addr.sa_len - sizeof (p->ifr_addr) : 0))
-#define ifraddr_size(a) (a.sa_len)
+		     ((p)->ifr_addr.sa_len > sizeof ((p)->ifr_addr) ? \
+		      (p)->ifr_addr.sa_len - sizeof ((p)->ifr_addr) : 0))
+#define ifraddr_size(a) ((a).sa_len)
 #else
 #define ifr_size(p) (sizeof (ifr_type))
 #define ifraddr_size(a) (sizeof (a))
@@ -985,9 +980,6 @@ ResetHosts(const char *display)
                     }
                 }
 #else                           /* HAVE_GETADDRINFO */
-#ifdef XTHREADS_NEEDS_BYNAMEPARAMS
-                _Xgethostbynameparams hparams;
-#endif
                 register struct hostent *hp;
 
                 /* host name */
@@ -1792,9 +1784,6 @@ siHostnameAddrMatch(int family, void *addr, int len,
     if (family == FamilyInternet) {
         register struct hostent *hp;
 
-#ifdef XTHREADS_NEEDS_BYNAMEPARAMS
-        _Xgethostbynameparams hparams;
-#endif
         char hostname[SI_HOSTNAME_MAXLEN];
         int f, hostaddrlen;
         void *hostaddr;
@@ -1872,7 +1861,7 @@ siHostnameCheckAddr(const char *valueString, int length, void *typePriv)
                     dotAllowed = FALSE;
                 }
             }
-            else if (((c >= 0x30) && (c <= 0x3A)) /* 0-9 */ ||
+            else if (((c >= 0x30) && (c <= 0x39)) /* 0-9 */ ||
                      ((c >= 0x61) && (c <= 0x7A)) /* a-z */ ||
                      ((c >= 0x41) && (c <= 0x5A)) /* A-Z */ ) {
                 dotAllowed = TRUE;

@@ -26,6 +26,8 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
+
 /*
  * Protocol testing for ChangeDeviceControl request.
  */
@@ -34,13 +36,13 @@
 #include <X11/Xproto.h>
 #include <X11/extensions/XIproto.h>
 
-#include "Xi/handlers.h"
+#include "Xext/xinput/handlers.h"
 
 #include "inputstr.h"
 
 #include "protocol-common.h"
 
-DECLARE_WRAP_FUNCTION(WriteToClient, void, ClientPtr client, int len, void *data);
+DECLARE_WRAP_FUNCTION(dixWriteToClient, void, ClientPtr client, int len, void *data);
 
 extern ClientRec client_window;
 static ClientRec client_request;
@@ -94,7 +96,7 @@ test_ChangeDeviceControl(void)
 
     request_init(request, ChangeDeviceControl);
 
-    wrapped_WriteToClient  = reply_ChangeDeviceControl;
+    wrapped_dixWriteToClient  = reply_ChangeDeviceControl;
 
     client_request = init_client(request->length, request);
 

@@ -18,11 +18,11 @@
 #include "int10Defines.h"
 #include "Pci.h"
 
-#define ALLOC_ENTRIES(x) ((V_RAM / x) - 1)
+#define ALLOC_ENTRIES(x) ((V_RAM / (x)) - 1)
 
 #include <string.h>             /* needed for memmove */
 
-static __inline__ uint32_t
+static inline uint32_t
 ldl_u(uint32_t * p)
 {
     uint32_t ret;
@@ -31,7 +31,7 @@ ldl_u(uint32_t * p)
     return ret;
 }
 
-static __inline__ uint16_t
+static inline uint16_t
 ldw_u(uint16_t * p)
 {
     uint16_t ret;
@@ -40,7 +40,7 @@ ldw_u(uint16_t * p)
     return ret;
 }
 
-static __inline__ void
+static inline void
 stl_u(uint32_t val, uint32_t * p)
 {
     uint32_t tmp = val;
@@ -48,7 +48,7 @@ stl_u(uint32_t val, uint32_t * p)
     memmove(p, &tmp, sizeof(*p));
 }
 
-static __inline__ void
+static inline void
 stw_u(uint16_t val, uint16_t * p)
 {
     uint16_t tmp = val;
@@ -78,7 +78,7 @@ typedef struct {
     char *alloc;
 } genericInt10Priv;
 
-#define INTPriv(x) ((genericInt10Priv*)x->private)
+#define INTPriv(x) ((genericInt10Priv*)(x)->private)
 
 int10MemRec genericMem = {
     read_b,
@@ -382,38 +382,38 @@ xf86Int10FreePages(xf86Int10InfoPtr pInt, void *pbase, int num)
 #endif
 #define SYS(addr) ((addr) >= HIGH_OFFSET)
 #define V_ADDR(addr) \
-	  (SYS(addr) ? ((char*)INTPriv(pInt)->sysMem) + (addr - HIGH_BASE) \
-	   : (((char*)(INTPriv(pInt)->base) + addr)))
-#define VRAM_ADDR(addr) (addr - V_RAM)
+	  (SYS((addr)) ? ((char*)INTPriv(pInt)->sysMem) + ((addr) - HIGH_BASE) \
+	   : (((char*)(INTPriv(pInt)->base) + (addr))))
+#define VRAM_ADDR(addr) ((addr) - V_RAM)
 #define VRAM_BASE (INTPriv(pInt)->vRam)
 
-#define VRAM(addr) ((addr >= V_RAM) && (addr < (V_RAM + VRAM_SIZE)))
+#define VRAM(addr) (((addr) >= V_RAM) && ((addr) < (V_RAM + VRAM_SIZE)))
 #define V_ADDR_RB(addr) \
-	((VRAM(addr)) ? MMIO_IN8((uint8_t*)VRAM_BASE,VRAM_ADDR(addr)) \
-	   : *(uint8_t*) V_ADDR(addr))
+	((VRAM((addr))) ? MMIO_IN8((uint8_t*)VRAM_BASE,VRAM_ADDR((addr))) \
+	   : *(uint8_t*) V_ADDR((addr)))
 #define V_ADDR_RW(addr) \
-	((VRAM(addr)) ? MMIO_IN16((uint16_t*)VRAM_BASE,VRAM_ADDR(addr)) \
-	   : ldw_u((void *)V_ADDR(addr)))
+	((VRAM((addr))) ? MMIO_IN16((uint16_t*)VRAM_BASE,VRAM_ADDR((addr))) \
+	   : ldw_u((void *)V_ADDR((addr))))
 #define V_ADDR_RL(addr) \
-	((VRAM(addr)) ? MMIO_IN32((uint32_t*)VRAM_BASE,VRAM_ADDR(addr)) \
-	   : ldl_u((void *)V_ADDR(addr)))
+	((VRAM((addr))) ? MMIO_IN32((uint32_t*)VRAM_BASE,VRAM_ADDR((addr))) \
+	   : ldl_u((void *)V_ADDR((addr))))
 
 #define V_ADDR_WB(addr,val) \
-	if(VRAM(addr)) \
-	    MMIO_OUT8((uint8_t*)VRAM_BASE,VRAM_ADDR(addr),val); \
+	if(VRAM((addr))) \
+	    MMIO_OUT8((uint8_t*)VRAM_BASE,VRAM_ADDR((addr)),(val)); \
 	else \
-	    *(uint8_t*) V_ADDR(addr) = val;
+	    *(uint8_t*) V_ADDR((addr)) = (val);
 #define V_ADDR_WW(addr,val) \
-	if(VRAM(addr)) \
-	    MMIO_OUT16((uint16_t*)VRAM_BASE,VRAM_ADDR(addr),val); \
+	if(VRAM((addr))) \
+	    MMIO_OUT16((uint16_t*)VRAM_BASE,VRAM_ADDR((addr)),(val)); \
 	else \
-	    stw_u((val),(void *)(V_ADDR(addr)));
+	    stw_u((val),(void *)(V_ADDR((addr))));
 
 #define V_ADDR_WL(addr,val) \
-	if (VRAM(addr)) \
-	    MMIO_OUT32((uint32_t*)VRAM_BASE,VRAM_ADDR(addr),val); \
+	if (VRAM((addr))) \
+	    MMIO_OUT32((uint32_t*)VRAM_BASE,VRAM_ADDR((addr)),(val)); \
 	else \
-	    stl_u(val,(void *)(V_ADDR(addr)));
+	    stl_u((val),(void *)(V_ADDR((addr))));
 
 static uint8_t
 read_b(xf86Int10InfoPtr pInt, int addr)

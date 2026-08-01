@@ -23,6 +23,7 @@
 
 #include <dix-config.h>
 
+#include <stdbool.h>
 #include <X11/Xproto.h>
 #include <X11/extensions/damageproto.h>
 
@@ -30,12 +31,14 @@
 #include "dix/request_priv.h"
 #include "dix/screenint_priv.h"
 #include "include/pixmapstr.h"
+#include "include/windowstr.h"
 #include "miext/extinit_priv.h"
 #include "os/client_priv.h"
 #include "Xext/damage/damageext_priv.h"
-#include "Xext/panoramiX.h"
-#include "Xext/panoramiXsrv.h"
-#include "xfixes/xfixes.h"
+#include "Xext/panoramiX/panoramiX.h"
+#include "Xext/panoramiX/panoramiXsrv.h"
+#include "Xext/panoramiX/panoramiX_priv.h"
+#include "Xext/xfixes/xfixes.h"
 
 #include "damagestr.h"
 #include "protocol-versions.h"
@@ -57,8 +60,8 @@ typedef struct _DamageExt {
 } DamageExtRec, *DamageExtPtr;
 
 #define VERIFY_DAMAGEEXT(pDamageExt, rid, client, mode) { \
-    int rc = dixLookupResourceByType((void **)&(pDamageExt), rid, \
-                                     DamageExtType, client, mode); \
+    int rc = dixLookupResourceByType((void **)&(pDamageExt), (rid), \
+                                     DamageExtType, (client), (mode)); \
     if (rc != Success) \
         return rc; \
 }
@@ -105,7 +108,7 @@ static void
 damageGetGeometry(DrawablePtr draw, int *x, int *y, int *w, int *h)
 {
 #ifdef XINERAMA
-    if (!noPanoramiXExtension && draw->type == DRAWABLE_WINDOW) {
+    if (PanoramiXIsEnabled() && draw->type == DRAWABLE_WINDOW) {
         WindowPtr win = (WindowPtr)draw;
 
         if (!win->parent) {
@@ -242,7 +245,7 @@ ProcDamageQueryVersion(ClientPtr client)
 }
 
 static void
-DamageExtRegister(DrawablePtr pDrawable, DamagePtr pDamage, Bool report)
+DamageExtRegister(DrawablePtr pDrawable, DamagePtr pDamage, bool report)
 {
     DamageSetReportAfterOp(pDamage, TRUE);
     DamageRegister(pDrawable, pDamage);
@@ -290,10 +293,8 @@ static int doDamageCreate(ClientPtr client, DamageExtPtr *ext, xDamageCreateReq 
     DamageExtPtr pDamageExt;
     DamageReportLevel level;
 
-    int rc = dixLookupDrawable(&pDrawable, stuff->drawable, client, 0,
-                            DixGetAttrAccess | DixReadAccess);
-    if (rc != Success)
-        return rc;
+    X_CALL_CHECK_ERR(dixLookupDrawable(&pDrawable, stuff->drawable, client, 0,
+                            DixGetAttrAccess | DixReadAccess));
 
     switch (stuff->level) {
     case XDamageReportRawRectangles:
@@ -405,13 +406,12 @@ DamageExtFreeWindowClip(RegionPtr reg)
  * DamageSubtract intersects with borderClip, so we must reconstruct the
  * protocol's perspective of same...
  */
-static Bool
-DamageExtSubtract(DamageExtPtr pDamageExt, const RegionPtr pRegion)
+static bool DamageExtSubtract(DamageExtPtr pDamageExt, const RegionPtr pRegion)
 {
     DamagePtr pDamage = pDamageExt->pDamage;
 
 #ifdef XINERAMA
-    if (!noPanoramiXExtension) {
+    if (PanoramiXIsEnabled()) {
         RegionPtr damage = DamageRegion(pDamage);
         RegionSubtract(damage, damage, pRegion);
 
@@ -480,10 +480,8 @@ ProcDamageAdd(ClientPtr client)
     RegionPtr pRegion;
 
     VERIFY_REGION(pRegion, stuff->region, client, DixWriteAccess);
-    int rc = dixLookupDrawable(&pDrawable, stuff->drawable, client, 0,
-                           DixWriteAccess);
-    if (rc != Success)
-        return rc;
+
+    X_CALL_CHECK_ERR(dixLookupDrawable(&pDrawable, stuff->drawable, client, 0, DixWriteAccess));
 
     /* The region is relative to the drawable origin, so translate it out to
      * screen coordinates like damage expects.
@@ -589,10 +587,8 @@ PanoramiXDamageCreate(ClientPtr client, xDamageCreateReq *stuff)
     PanoramiXRes *draw;
 
     LEGAL_NEW_RESOURCE(stuff->damage, client);
-    int rc = dixLookupResourceByClass((void **)&draw, stuff->drawable, XRC_DRAWABLE,
-                                  client, DixGetAttrAccess | DixReadAccess);
-    if (rc != Success)
-        return rc;
+    X_CALL_CHECK_ERR(dixLookupResourceByClass((void **)&draw, stuff->drawable, XRC_DRAWABLE,
+                                  client, DixGetAttrAccess | DixReadAccess));
 
     if (!(damage = calloc(1, sizeof(PanoramiXDamageRes))))
         return BadAlloc;
@@ -600,7 +596,7 @@ PanoramiXDamageCreate(ClientPtr client, xDamageCreateReq *stuff)
     if (!AddResource(stuff->damage, XRT_DAMAGE, damage))
         return BadAlloc;
 
-    rc = doDamageCreate(client, &(damage->ext), stuff);
+    int rc = doDamageCreate(client, &(damage->ext), stuff);
     if (rc == Success && draw->type == XRT_WINDOW) {
         XINERAMA_FOR_EACH_SCREEN_FORWARD({
             DrawablePtr pDrawable;

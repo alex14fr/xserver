@@ -54,7 +54,11 @@
 #include "include/extinit.h"
 #include "os/log_priv.h"
 #include "os/osdep.h"
-#include "xkb/xkbsrv_priv.h"
+#include "Xext/panoramiX/panoramiX_priv.h"
+#include "Xext/xkeyboard/xkbsrv_priv.h"
+#ifdef DPMSExtension
+#include "Xext/dpms/dpms_priv.h"
+#endif
 
 #include "xf86_priv.h"
 #include "xf86Modes.h"
@@ -72,9 +76,6 @@
 #include "xf86Xinput_priv.h"
 
 #include "picture.h"
-#ifdef DPMSExtension
-#include "dpmsproc.h"
-#endif
 
 /*
  * These paths define the way the config file search is done.  The escape
@@ -111,9 +112,6 @@
 #endif
 #ifndef SYS_CONFIGDIRPATH
 #define SYS_CONFIGDIRPATH	"%D/X11/%X"
-#endif
-#ifndef PROJECTROOT
-#define PROJECTROOT	"/usr/X11R6"
 #endif
 
 static ModuleDefault ModuleDefaults[] = {
@@ -206,12 +204,12 @@ xf86ValidateFontPath(char *path)
                 continue;
             }
             else {
-                XNFasprintf(&p1, "%s%s", dir_elem, DIR_FILE);
-                flag = stat(p1, &stat_buf);
+                char pbuf1[PATH_MAX] = { 0 };
+                snprintf(pbuf1, sizeof(pbuf1)-1, "%s%s", dir_elem, DIR_FILE);
+                flag = stat(pbuf1, &stat_buf);
                 if (flag == 0)
                     if (!S_ISREG(stat_buf.st_mode))
                         flag = -1;
-                free(p1);
                 if (flag != 0) {
                     LogMessageVerb(X_WARNING, 1,
                                    "`fonts.dir' not found (or not valid) in \"%s\".\n",
@@ -960,14 +958,15 @@ configServerFlags(XF86ConfFlagsPtr flagsconf, XF86OptionPtr layoutopts)
 
 #ifdef XINERAMA
     from = X_DEFAULT;
-    if (!noPanoramiXExtension)
+    if (PanoramiXIsEnabled())
         from = X_CMDLINE;
     else if (xf86GetOptValBool(FlagOptions, FLAG_XINERAMA, &value)) {
         noPanoramiXExtension = !value;
         from = X_CONFIG;
     }
-    if (!noPanoramiXExtension)
+    if (PanoramiXIsEnabled()) {
         LogMessageVerb(from, 1, "Xinerama: enabled\n");
+    }
 #endif /* XINERAMA */
 
 #ifdef DRI2

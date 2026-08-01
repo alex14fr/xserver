@@ -26,10 +26,12 @@
 #ifndef XSERVER_XFREE86_XF86VGAARBITERPRIV_H
 #define XSERVER_XFREE86_XF86VGAARBITERPRIV_H
 
-#include "misc.h"
+#include <X11/X.h>
+
+#include "include/misc.h"
+
 #include "xf86.h"
 #include "xf86_OSproc.h"
-#include <X11/X.h>
 #include "scrnintstr.h"
 #include "screenint.h"
 #include "gcstruct.h"
@@ -42,7 +44,7 @@
 #include "mipointrst.h"
 #include "picturestr.h"
 
-#define WRAP_SCREEN(x,y) {pScreenPriv->x = pScreen->x; pScreen->x = y;}
+#define WRAP_SCREEN(x,y) {pScreenPriv->x = pScreen->x; pScreen->x = (y);}
 
 #define UNWRAP_SCREEN(x) pScreen->x = pScreenPriv->x
 
@@ -52,11 +54,11 @@
 
 #define SCREEN_EPILOG(x,y) do {                 \
         SCREEN_PRIV()->x = pScreen->x;          \
-        pScreen->x = y;                         \
+        pScreen->x = (y);                         \
     } while (0)
 
 #define WRAP_PICT(x,y) if (ps) {pScreenPriv->x = ps->x;\
-    ps->x = y;}
+    ps->x = (y);}
 
 #define UNWRAP_PICT(x) if (ps) {ps->x = pScreenPriv->x;}
 
@@ -64,9 +66,9 @@
     ((VGAarbiterScreenPtr)dixLookupPrivate(&(pScreen)->devPrivates, \
     &VGAarbiterScreenKeyRec))->field
 
-#define PICTURE_EPILOGUE(field, wrap) ps->field = wrap
+#define PICTURE_EPILOGUE(field, wrap) ps->field = (wrap)
 
-#define WRAP_SCREEN_INFO(x,y) do {pScreenPriv->x = pScrn->x; pScrn->x = y;} while(0)
+#define WRAP_SCREEN_INFO(x,y) do {pScreenPriv->x = pScrn->x; pScrn->x = (y);} while(0)
 
 #define UNWRAP_SCREEN_INFO(x) pScrn->x = pScreenPriv->x
 

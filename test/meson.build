@@ -94,6 +94,13 @@ if get_option('xvfb')
         suite: 'xvfb'
     )
 
+    test('go-xts',
+        find_program('scripts/run-xts-go.sh'),
+        env: piglit_env,
+        timeout: 300,
+        suite: 'xvfb'
+    )
+
     if rendercheck.found()
         foreach rctest: rendercheck_tests
             test(rctest[0],
@@ -125,6 +132,13 @@ if get_option('xvfb')
                 find_program('scripts/xephyr-glamor' + testsuite + '-piglit.sh'),
                 env: piglit_env,
                 timeout: 1200,
+                suite: 'xephyr-glamor' + testsuite,
+            )
+
+            test('go-xts',
+                find_program('scripts/run-xts-go-xephyr.sh'),
+                env: piglit_env,
+                timeout: 300,
                 suite: 'xephyr-glamor' + testsuite,
             )
         endforeach
@@ -166,6 +180,7 @@ subdir('bigreq')
 subdir('damage')
 subdir('sync')
 subdir('bugs')
+subdir('pyxtest')
 
 if build_xorg
 # Tests that require at least some DDX functions in order to fully link
@@ -178,6 +193,7 @@ if build_xorg
      'fixes.c',
      'input.c',
      'list.c',
+     'list_zeroinit.c',
      'misc.c',
      'sha1.c',
      'signal-logging.c',
@@ -220,7 +236,7 @@ if build_xorg
        ldwraps = [
         '-Wl,-wrap,dixLookupWindow',
         '-Wl,-wrap,dixLookupResourceOwner',
-        '-Wl,-wrap,WriteToClient',
+        '-Wl,-wrap,dixWriteToClient',
         '-Wl,-wrap,dixLookupWindow',
         '-Wl,-wrap,XISetEventMask',
         '-Wl,-wrap,AddResource',

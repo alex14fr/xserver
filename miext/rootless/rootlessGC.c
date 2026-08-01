@@ -32,6 +32,12 @@
 #include <dix-config.h>
 
 #include <stddef.h>             /* For NULL */
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "os/mathx_priv.h"
+
 #include "mi.h"
 #include "scrnintstr.h"
 #include "gcstruct.h"
@@ -39,10 +45,6 @@
 #include "windowstr.h"
 #include "dixfontstr.h"
 #include "fb.h"
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include "rootlessCommon.h"
 
@@ -195,8 +197,8 @@ static GCOps rootlessGCOps = {
             (pGC)->bgPixel = _save_bg;				\
             (pGC)->planemask = _save_pm;			\
             (pDraw)->depth = (pDraw)->bitsPerPixel;		\
-            VALIDATE_GC(pGC, GCForeground | GCBackground |	\
-                        GCPlaneMask, pDraw);			\
+            VALIDATE_GC((pGC), GCForeground | GCBackground |	\
+                        GCPlaneMask, (pDraw));			\
             (pDraw)->depth = depth;				\
         }							\
     } while (0)
@@ -210,8 +212,8 @@ static GCOps rootlessGCOps = {
             (pGC)->bgPixel |= mask;					\
             (pGC)->planemask |= mask;					\
             (pDraw)->depth = (pDraw)->bitsPerPixel;			\
-            VALIDATE_GC(pGC, GCForeground |				\
-                        GCBackground | GCPlaneMask, pDraw);		\
+            VALIDATE_GC((pGC), GCForeground |				\
+                        GCBackground | GCPlaneMask, (pDraw));		\
             (pDraw)->depth = depth;					\
             _changed = TRUE;						\
         }								\
@@ -219,9 +221,9 @@ static GCOps rootlessGCOps = {
 
 #define VALIDATE_GC(pGC, changes, pDrawable)				\
     do {								\
-        pGC->funcs->ValidateGC(pGC, changes, pDrawable);		\
-        if (((WindowPtr) pDrawable)->viewable) {			\
-            gcrec->originalOps = pGC->ops;				\
+        (pGC)->funcs->ValidateGC((pGC), (changes), (pDrawable));		\
+        if (((WindowPtr) (pDrawable))->viewable) {			\
+            gcrec->originalOps = (pGC)->ops;				\
         }								\
     } while(0)
 
@@ -400,7 +402,7 @@ RootlessCopyClip(GCPtr pgcDst, GCPtr pgcSrc)
 #define GCOP_UNWRAP(pGC) \
     RootlessGCRec *gcrec = (RootlessGCRec *) \
         dixLookupPrivate(&(pGC)->devPrivates, rootlessGCPrivateKey); \
-    const GCFuncs *saveFuncs = pGC->funcs; \
+    const GCFuncs *saveFuncs = (pGC)->funcs; \
     (pGC)->funcs = gcrec->originalFuncs; \
     (pGC)->ops = gcrec->originalOps;
 
@@ -1180,8 +1182,8 @@ RootlessImageText8(DrawablePtr dst, GCPtr pGC,
         int top, bot, Min, Max;
         BoxRec box;
 
-        top = max(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
-        bot = max(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
+        top = MAX(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
+        bot = MAX(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
 
         Min = count * FONTMINBOUNDS(pGC->font, characterWidth);
         if (Min > 0)
@@ -1268,8 +1270,8 @@ RootlessImageText16(DrawablePtr dst, GCPtr pGC,
         int top, bot, Min, Max;
         BoxRec box;
 
-        top = max(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
-        bot = max(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
+        top = MAX(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
+        bot = MAX(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
 
         Min = count * FONTMINBOUNDS(pGC->font, characterWidth);
         if (Min > 0)
@@ -1359,8 +1361,8 @@ RootlessImageGlyphBlt(DrawablePtr dst, GCPtr pGC,
         unsigned int nglyph = nglyphInit;
         CharInfoPtr *ppci = ppciInit;
 
-        top = max(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
-        bot = max(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
+        top = MAX(FONTMAXBOUNDS(pGC->font, ascent), FONTASCENT(pGC->font));
+        bot = MAX(FONTMAXBOUNDS(pGC->font, descent), FONTDESCENT(pGC->font));
 
         box.x1 = ppci[0]->metrics.leftSideBearing;
         if (box.x1 > 0)

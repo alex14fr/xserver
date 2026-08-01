@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  */
@@ -16,7 +16,7 @@
 extern _X_EXPORT DevPrivateKey
 fbGetGCPrivateKey(GCPtr pGC);
 
-#define fbGetGCPrivate(pGC) ((FbGCPrivPtr)dixLookupPrivate(&(pGC)->devPrivates, fbGetGCPrivateKey(pGC)))
+#define fbGetGCPrivate(pGC) ((FbGCPrivPtr)dixLookupPrivate(&(pGC)->devPrivates, fbGetGCPrivateKey((pGC))))
 
 #define fbGetScreenPixmap(s)    ((PixmapPtr) (s)->devPrivate)
 

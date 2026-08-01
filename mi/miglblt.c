@@ -46,12 +46,15 @@ SOFTWARE.
 
 #include <dix-config.h>
 
-#include	<X11/X.h>
-#include	<X11/Xmd.h>
-#include	<X11/Xproto.h>
-#include	"misc.h"
-#include	<X11/fonts/fontstruct.h>
-#include        <X11/fonts/libxfont2.h>
+#include <stddef.h>
+#include <X11/X.h>
+#include <X11/Xmd.h>
+#include <X11/Xproto.h>
+#include <X11/fonts/fontstruct.h>
+#include <X11/fonts/libxfont2.h>
+
+#include "include/misc.h"
+
 #include	"dixfontstr.h"
 #include	"gcstruct.h"
 #include	"windowstr.h"
@@ -85,7 +88,6 @@ miPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int ngly
 {
     int width, height;
     PixmapPtr pPixmap;
-    int nbyLine;                /* bytes per line of padded pixmap */
     FontPtr pfont;
     GCPtr pGCtmp;
     int i;
@@ -96,7 +98,6 @@ miPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int ngly
     unsigned char *pglyph;      /* pointer bits in glyph */
     int gWidth, gHeight;        /* width and height of glyph */
     int nbyGlyphWidth;          /* bytes per scanline of glyph */
-    int nbyPadGlyph;            /* server padded line of glyph */
 
     ChangeGCVal gcvals[3];
 
@@ -128,7 +129,7 @@ miPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int ngly
 
     ChangeGC(NULL, pGCtmp, GCFunction | GCForeground | GCBackground, gcvals);
 
-    nbyLine = BitmapBytePad(width);
+    size_t nbyLine = BitmapBytePad(width);
     pbits = calloc(height, nbyLine);
     if (!pbits) {
         dixDestroyPixmap(pPixmap, 0);
@@ -140,15 +141,11 @@ miPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int ngly
         pglyph = FONTGLYPHBITS(pglyphBase, pci);
         gWidth = GLYPHWIDTHPIXELS(pci);
         gHeight = GLYPHHEIGHTPIXELS(pci);
-        if (gWidth && gHeight) {
+        if (gWidth > 0 && gHeight > 0) {
             nbyGlyphWidth = GLYPHWIDTHBYTESPADDED(pci);
-            nbyPadGlyph = BitmapBytePad(gWidth);
+            size_t nbyPadGlyph = BitmapBytePad(gWidth);
 
-            if (nbyGlyphWidth == nbyPadGlyph
-#if GLYPHPADBYTES != 4
-                && (((int) pglyph) & 3) == 0
-#endif
-                ) {
+            if (nbyGlyphWidth == nbyPadGlyph) {
                 pb = pglyph;
             }
             else {

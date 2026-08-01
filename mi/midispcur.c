@@ -31,14 +31,14 @@ in this Software without prior written authorization from The Open Group.
 
 #include <dix-config.h>
 
-#include   <X11/X.h>
+#include <X11/X.h>
 
-#include   "dix/dix_priv.h"
-#include   "dix/gc_priv.h"
-#include   "dix/screen_hooks_priv.h"
-#include   "dix/screenint_priv.h"
+#include "dix/dix_priv.h"
+#include "dix/gc_priv.h"
+#include "dix/screen_hooks_priv.h"
+#include "dix/screenint_priv.h"
+#include "include/misc.h"
 
-#include   "misc.h"
 #include   "input.h"
 #include   "cursorstr.h"
 #include   "windowstr.h"
@@ -72,9 +72,9 @@ typedef struct {
 } miDCBufferRec, *miDCBufferPtr;
 
 #define miGetDCDevice(dev, screen) \
- ((DevHasCursor(dev)) ? \
-  (miDCBufferPtr)dixLookupScreenPrivate(&dev->devPrivates, miDCDeviceKey, screen) : \
-  (miDCBufferPtr)dixLookupScreenPrivate(&GetMaster(dev, MASTER_POINTER)->devPrivates, miDCDeviceKey, screen))
+ ((DevHasCursor((dev))) ? \
+  (miDCBufferPtr)dixLookupScreenPrivate(&(dev)->devPrivates, miDCDeviceKey, (screen)) : \
+  (miDCBufferPtr)dixLookupScreenPrivate(&GetMaster((dev), MASTER_POINTER)->devPrivates, miDCDeviceKey, (screen)))
 
 /*
  * The core pointer buffer will point to the index of the virtual pointer
@@ -151,7 +151,7 @@ bool miDCRealizeCursor(ScreenPtr pScreen, CursorPtr pCursor)
     return TRUE;
 }
 
-#define EnsurePicture(picture,draw,win) (picture || miDCMakePicture(&picture,draw,win))
+#define EnsurePicture(picture,draw,win) ((picture) || miDCMakePicture(&(picture),(draw),(win)))
 
 static PicturePtr
 miDCMakePicture(PicturePtr * ppPicture, DrawablePtr pDraw, WindowPtr pWin)

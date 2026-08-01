@@ -52,6 +52,7 @@
  */
 #include <dix-config.h>
 
+#include <assert.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -122,6 +123,25 @@ DetermineClientPid(struct _Client * client)
     return pid;
 }
 
+#ifdef __APPLE__ /* only required on macOS */
+static void
+get_argmax_from_kern(void *arg)
+{
+    int *argmax = arg;
+    int mib[2];
+    size_t len;
+
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_ARGMAX;
+
+    len = sizeof(int);
+    if (sysctl(mib, 2, argmax, &len, NULL, 0) == -1) {
+        ErrorF("Unable to dynamically determine kern.argmax, using ARG_MAX (%d)\n", ARG_MAX);
+        *argmax = ARG_MAX;
+    }
+}
+#endif
+
 /**
  * Try to determine a command line string for a client based on its
  * PID. Note that mapping PID to a command hasn't been implemented for
@@ -146,7 +166,7 @@ DetermineClientPid(struct _Client * client)
 void
 DetermineClientCmd(pid_t pid, const char **cmdname, const char **cmdargs)
 {
-#if !defined(__APPLE__) && !defined(__DragonFly__) && !defined(__FreeBSD__)
+#if !defined(__APPLE__) && !defined(__DragonFly__) && !defined(__FreeBSD__) && !defined(__OpenBSD__)
     char path[PATH_MAX + 1];
     int totsize = 0;
     int fd = 0;
@@ -164,19 +184,7 @@ DetermineClientCmd(pid_t pid, const char **cmdname, const char **cmdargs)
     {
         static dispatch_once_t once;
         static int argmax;
-        dispatch_once(&once, ^{
-            int mib[2];
-            size_t len;
-
-            mib[0] = CTL_KERN;
-            mib[1] = KERN_ARGMAX;
-
-            len = sizeof(argmax);
-            if (sysctl(mib, 2, &argmax, &len, NULL, 0) == -1) {
-                ErrorF("Unable to dynamically determine kern.argmax, using ARG_MAX (%d)\n", ARG_MAX);
-                argmax = ARG_MAX;
-            }
-        });
+        dispatch_once_f(&once, &argmax, get_argmax_from_kern);
 
         int mib[3];
         size_t len = argmax;
@@ -280,6 +288,11 @@ DetermineClientCmd(pid_t pid, const char **cmdname, const char **cmdargs)
         /* Read KERN_PROC_ARGS contents. Similar to /proc/pid/cmdline
          * the process name and each argument are separated by NUL byte. */
         char *const procargs = calloc(1, len);
+        if (!procargs) {
+            ErrorF("Failed to allocate memory (%zu bytes) for KERN_PROC_ARGS result for pid %d: %s\n", len, pid, strerror(errno));
+            return;
+        }
+
         if (sysctl(mib, ARRAY_SIZE(mib), procargs, &len, NULL, 0) != 0) {
             ErrorF("Failed to get KERN_PROC_ARGS for PID %d: %s\n", pid, strerror(errno));
             free(procargs);
@@ -455,7 +468,6 @@ DetermineClientCmd(pid_t pid, const char **cmdname, const char **cmdargs)
 void
 ReserveClientIds(struct _Client *client)
 {
-#ifdef CLIENTIDS
     if (client == NULL)
         return;
 
@@ -475,7 +487,6 @@ ReserveClientIds(struct _Client *client)
            (unsigned long) client->clientAsMask,
            client->clientIds->cmdname ? client->clientIds->cmdname : "NULL",
            client->clientIds->cmdargs ? client->clientIds->cmdargs : "NULL");
-#endif                          /* CLIENTIDS */
 }
 
 /**
@@ -487,7 +498,6 @@ ReserveClientIds(struct _Client *client)
 void
 ReleaseClientIds(struct _Client *client)
 {
-#ifdef CLIENTIDS
     if (client == NULL)
         return;
 
@@ -505,7 +515,6 @@ ReleaseClientIds(struct _Client *client)
     free((void *) client->clientIds->cmdargs);  /* const char * */
     free(client->clientIds);
     client->clientIds = NULL;
-#endif                          /* CLIENTIDS */
 }
 
 /**

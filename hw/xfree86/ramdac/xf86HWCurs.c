@@ -4,9 +4,9 @@
 #include <X11/X.h>
 
 #include "dix/colormap_priv.h"
-#include "randr/randrstr_priv.h"
+#include "include/misc.h"
+#include "Xext/randr/randrstr_priv.h"
 
-#include "misc.h"
 #include "xf86.h"
 #include "xf86_OSproc.h"
 #include "scrnintstr.h"
@@ -38,12 +38,12 @@ xf86ReverseBitOrder(CARD32 v)
 #define SCANLINE CARD32
 #define CUR_BITMAP_SCANLINE_PAD 32
 #define CUR_LOG2_BITMAP_PAD 5
-#define REVERSE_BIT_ORDER(w) xf86ReverseBitOrder(w)
+#define REVERSE_BIT_ORDER(w) xf86ReverseBitOrder((w))
 #else
 #define SCANLINE CARD64
 #define CUR_BITMAP_SCANLINE_PAD BITMAP_SCANLINE_PAD
 #define CUR_LOG2_BITMAP_PAD LOG2_BITMAP_PAD
-#define REVERSE_BIT_ORDER(w) xf86CARD64ReverseBits(w)
+#define REVERSE_BIT_ORDER(w) xf86CARD64ReverseBits((w))
 static CARD64 xf86CARD64ReverseBits(CARD64 w);
 
 static CARD64
@@ -69,7 +69,7 @@ xf86CARD64ReverseBits(CARD64 w)
 #define SCANLINE CARD32
 #define CUR_BITMAP_SCANLINE_PAD BITMAP_SCANLINE_PAD
 #define CUR_LOG2_BITMAP_PAD LOG2_BITMAP_PAD
-#define REVERSE_BIT_ORDER(w) xf86ReverseBitOrder(w)
+#define REVERSE_BIT_ORDER(w) xf86ReverseBitOrder((w))
 
 #endif                          /* BITMAP_SCANLINE_PAD == 64 */
 

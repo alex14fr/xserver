@@ -64,7 +64,7 @@
 #include "xf86Priv.h"
 #include "xf86Config.h"
 #include "xf86Xinput_priv.h"
-#include "XIstubs.h"
+#include "Xext/xinput/XIstubs.h"
 #include "xf86Optrec.h"
 #include "mipointer.h"
 #include "loaderProcs.h"
@@ -72,7 +72,7 @@
 #include "seatd-libseat.h"
 
 #include "exevents.h"           /* AddInputDevice */
-#include "exglobals.h"
+#include "Xext/xinput/exglobals.h"
 #include "eventstr.h"
 #include "optionstr.h"
 #include "xf86Module_priv.h"
@@ -111,9 +111,9 @@
 
 /* Valuator verification macro */
 #define XI_VERIFY_VALUATORS(num_valuators) \
-    if (num_valuators > MAX_VALUATORS) { \
+    if ((num_valuators) > MAX_VALUATORS) { \
         LogMessageVerb(X_ERROR, 1, "%s: num_valuator %d is greater than MAX_VALUATORS\n", \
-                       __func__, num_valuators); \
+                       __func__, (num_valuators)); \
         return; \
     }
 

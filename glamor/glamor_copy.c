@@ -21,7 +21,10 @@
  */
 #include <dix-config.h>
 
+#include <stdbool.h>
+
 #include "os/bug_priv.h"
+#include "os/mathx_priv.h"
 
 #include "glamor_priv.h"
 #include "glamor_transfer.h"
@@ -373,7 +376,7 @@ glamor_copy_fbo_fbo_draw(DrawablePtr src,
     glamor_program *prog;
     const glamor_facet *copy_facet;
     int n;
-    Bool ret = FALSE;
+    bool ret = FALSE;
     BoxRec bounds = glamor_no_rendering_bounds();
 
     glamor_make_current(glamor_priv);
@@ -465,10 +468,10 @@ glamor_copy_fbo_fbo_draw(DrawablePtr src,
 
         glamor_pixmap_loop(dst_priv, dst_box_index) {
             BoxRec scissor = {
-                .x1 = max(-args.dx, bounds.x1),
-                .y1 = max(-args.dy, bounds.y1),
-                .x2 = min(-args.dx + src_box->x2 - src_box->x1, bounds.x2),
-                .y2 = min(-args.dy + src_box->y2 - src_box->y1, bounds.y2),
+                .x1 = MAX(-args.dx, bounds.x1),
+                .y1 = MAX(-args.dy, bounds.y1),
+                .x2 = MIN(-args.dx + src_box->x2 - src_box->x1, bounds.x2),
+                .y2 = MIN(-args.dy + src_box->y2 - src_box->y1, bounds.y2),
             };
             if (scissor.x1 >= scissor.x2 || scissor.y1 >= scissor.y2)
                 continue;
@@ -543,10 +546,10 @@ glamor_copy_fbo_fbo_temp(DrawablePtr src,
      */
     bounds = box[0];
     for (n = 1; n < nbox; n++) {
-        bounds.x1 = min(bounds.x1, box[n].x1);
-        bounds.x2 = max(bounds.x2, box[n].x2);
-        bounds.y1 = min(bounds.y1, box[n].y1);
-        bounds.y2 = max(bounds.y2, box[n].y2);
+        bounds.x1 = MIN(bounds.x1, box[n].x1);
+        bounds.x2 = MAX(bounds.x2, box[n].x2);
+        bounds.y1 = MIN(bounds.y1, box[n].y1);
+        bounds.y2 = MAX(bounds.y2, box[n].y2);
     }
 
     /* Allocate a suitable temporary pixmap
@@ -659,11 +662,11 @@ glamor_copy_needs_temp(DrawablePtr src,
 
         bounds = box[0];
         for (n = 1; n < nbox; n++) {
-            bounds.x1 = min(bounds.x1, box[n].x1);
-            bounds.y1 = min(bounds.y1, box[n].y1);
+            bounds.x1 = MIN(bounds.x1, box[n].x1);
+            bounds.y1 = MIN(bounds.y1, box[n].y1);
 
-            bounds.x2 = max(bounds.x2, box[n].x2);
-            bounds.y2 = max(bounds.y2, box[n].y2);
+            bounds.x2 = MAX(bounds.x2, box[n].x2);
+            bounds.y2 = MAX(bounds.y2, box[n].y2);
         }
 
         /* Check to see if the pixmap-relative boxes overlap in both X and Y,

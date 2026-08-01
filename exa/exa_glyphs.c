@@ -42,12 +42,13 @@
 
 #include <dix-config.h>
 
+#include <assert.h>
 #include <stdlib.h>
 
 #include "include/mipict.h"
+#include "Xext/render/glyphstr_priv.h"
 
 #include "exa_priv.h"
-#include "glyphstr_priv.h"
 
 #ifdef DEBUG_GLYPH_CACHE
 #define DBG_GLYPH_CACHE(a) ErrorF a
@@ -139,7 +140,7 @@ exaUnrealizeGlyphCaches(ScreenPtr pScreen, unsigned int format)
     }
 }
 
-#define NeedsComponent(f) (PIXMAN_FORMAT_A(f) != 0 && PIXMAN_FORMAT_RGB(f) != 0)
+#define NeedsComponent(f) (PIXMAN_FORMAT_A((f)) != 0 && PIXMAN_FORMAT_RGB((f)) != 0)
 
 /* All caches for a single format share a single pixmap for glyph storage,
  * allowing mixing glyphs of different sizes without paying a penalty

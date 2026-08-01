@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT OR X11
+/* SPDX-License-Identifier: X11 OR MIT OR AGPL-3.0-or-later
  *
  * Copyright © 2024 Enrico Weigelt, metux IT consult <info@metux.net>
  */
@@ -97,7 +97,7 @@ uint32_t xnest_create_bitmap_from_data(
     uint32_t gc = xcb_generate_id(xnestUpstreamInfo.conn);
     xcb_create_gc(conn, gc, pix, 0, NULL);
 
-    const int leftPad = 0;
+    const size_t leftPad = 0;
 
     xcb_put_image(conn,
                   XYPixmap,
@@ -109,7 +109,7 @@ uint32_t xnest_create_bitmap_from_data(
                   0 /* dst_y */,
                   leftPad,
                   1 /* depth */,
-                  BitmapBytePad(width + leftPad) * height,
+                  BitmapBytePad((size_t)(width + leftPad)) * (size_t)height,
                   (uint8_t*)data);
 
     xcb_free_gc(conn, gc);
@@ -139,7 +139,7 @@ uint32_t xnest_create_pixmap_from_bitmap_data(
 
     xcb_aux_change_gc(conn, gc, XCB_GC_FOREGROUND | XCB_GC_BACKGROUND, &gcv);
 
-    const int leftPad = 0;
+    const size_t leftPad = 0;
     xcb_put_image(conn,
                   XYBitmap,
                   pix,
@@ -150,7 +150,7 @@ uint32_t xnest_create_pixmap_from_bitmap_data(
                   0 /* dst_y */,
                   leftPad,
                   1 /* depth */,
-                  BitmapBytePad(width + leftPad) * height,
+                  BitmapBytePad((size_t)(width + leftPad)) * (size_t)height,
                   (uint8_t*)data);
 
     xcb_free_gc(conn, gc);
@@ -495,9 +495,9 @@ do { \
 
 #define XN_CI_GET_DEFAULT_INFO_2D(font,cs) \
 do { \
-    unsigned int r = (font->font_reply->default_char >> 8); \
-    unsigned int c = (font->font_reply->default_char & 0xff); \
-    XN_CI_GET_CHAR_INFO_2D (font, r, c, NULL, cs); \
+    unsigned int r = ((font)->font_reply->default_char >> 8); \
+    unsigned int c = ((font)->font_reply->default_char & 0xff); \
+    XN_CI_GET_CHAR_INFO_2D ((font), r, c, NULL, (cs)); \
 } while (0)
 
 #define XN_CI_GET_ROWZERO_CHAR_INFO_2D(font,col,def,cs) \

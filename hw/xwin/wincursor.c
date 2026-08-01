@@ -35,12 +35,13 @@
 #include "win.h"
 #include "winmsg.h"
 
+#include "include/misc.h"
 #include "mi/mipointer_priv.h"
+#include "os/mathx_priv.h"
 
 #include <cursorstr.h>
 #include <mipointrst.h>
 #include <servermd.h>
-#include "misc.h"
 
 #define BRIGHTNESS(x) (x##Red * 0.299 + x##Green * 0.587 + x##Blue * 0.114)
 
@@ -189,8 +190,8 @@ winLoadCursor(ScreenPtr pScreen, CursorPtr pCursor, int screen)
         bits_to_bytes(pScreenPriv->cursor.sm_cx) * pScreenPriv->cursor.sm_cy;
 
     /* Get the effective width and height */
-    nCX = min(pScreenPriv->cursor.sm_cx, pCursor->bits->width);
-    nCY = min(pScreenPriv->cursor.sm_cy, pCursor->bits->height);
+    nCX = MIN(pScreenPriv->cursor.sm_cx, pCursor->bits->width);
+    nCY = MIN(pScreenPriv->cursor.sm_cy, pCursor->bits->height);
 
     /* Allocate memory for the bitmaps */
     unsigned char *pAnd = calloc(1, nBytes);
@@ -205,7 +206,7 @@ winLoadCursor(ScreenPtr pScreen, CursorPtr pCursor, int screen)
         for (y = 0; y < nCY; ++y)
             for (x = 0; x < xmax; ++x) {
                 int nWinPix = bits_to_bytes(pScreenPriv->cursor.sm_cx) * y + x;
-                int nXPix = BitmapBytePad(pCursor->bits->width) * y + x;
+                size_t nXPix = BitmapBytePad(pCursor->bits->width) * y + x;
 
                 pAnd[nWinPix] = 0;
                 if (fReverse)
@@ -220,7 +221,7 @@ winLoadCursor(ScreenPtr pScreen, CursorPtr pCursor, int screen)
         for (y = 0; y < nCY; ++y)
             for (x = 0; x < xmax; ++x) {
                 int nWinPix = bits_to_bytes(pScreenPriv->cursor.sm_cx) * y + x;
-                int nXPix = BitmapBytePad(pCursor->bits->width) * y + x;
+                size_t nXPix = BitmapBytePad(pCursor->bits->width) * y + x;
 
                 unsigned char mask = pCursor->bits->mask[nXPix];
 
@@ -316,7 +317,7 @@ winLoadCursor(ScreenPtr pScreen, CursorPtr pCursor, int screen)
                         bit = pAnd[nWinPix];
                         bit = bit & (1 << (7 - (x & 7)));
                         if (!bit) {     /* Within the cursor mask? */
-                            int nXPix =
+                            size_t nXPix =
                                 BitmapBytePad(pCursor->bits->width) * y +
                                 (x / 8);
                             bit =

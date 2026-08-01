@@ -65,23 +65,21 @@ SOFTWARE.
 #ifdef WIN32
 #include <X11/Xwinsock.h>
 #endif
-#include <X11/X.h>
-#include <X11/Xproto.h>
-#include "os/Xtrans.h"
-#include "os/Xtransint.h"
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <sys/stat.h>
+#include <X11/X.h>
+#include <X11/Xproto.h>
+
 
 #ifndef WIN32
 #include <sys/socket.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#ifdef CSRG_BASED
+#ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
 #include <netinet/tcp.h>
@@ -101,8 +99,9 @@ SOFTWARE.
 #include "os/log_priv.h"
 #include "os/osdep.h"
 #include "os/probes_priv.h"
+#include "os/Xtrans.h"
+#include "os/Xtransint.h"
 
-#include "misc.h"               /* for typedef of pointer */
 #include "dixstruct_priv.h"
 #include "globals.h"
 #include "xace.h"
@@ -139,7 +138,7 @@ static pid_t ParentProcess;
 static Bool RunFromSmartParent; /* send SIGUSR1 to parent process */
 #endif
 
-int GrabInProgress = 0;
+static int GrabInProgress = 0;
 
 static void
 EstablishNewConnections(int curconn, int ready, void *data);

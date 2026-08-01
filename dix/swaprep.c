@@ -51,8 +51,9 @@ SOFTWARE.
 #include <X11/fonts/fontstruct.h>
 
 #include "dix/dix_priv.h"
+#include "include/misc.h"
+#include "os/io_priv.h"
 
-#include "misc.h"
 #include "dixstruct.h"
 #include "scrnintstr.h"
 #include "swaprep.h"
@@ -590,7 +591,7 @@ WriteSConnectionInfo(ClientPtr pClient, unsigned long size, char *pInfo)
         return;
     }
     SwapConnSetupInfo(pInfo, pInfoTBase);
-    WriteToClient(pClient, (int) size, pInfoTBase);
+    dixWriteToClient(pClient, (int) size, pInfoTBase);
     free(pInfoTBase);
 }
 
@@ -610,7 +611,7 @@ WriteSConnSetupPrefix(ClientPtr pClient, xConnSetupPrefix * pcsp)
     xConnSetupPrefix cspT;
 
     SwapConnSetupPrefix(pcsp, &cspT);
-    WriteToClient(pClient, sizeof(cspT), &cspT);
+    dixWriteToClient(pClient, sizeof(cspT), &cspT);
 }
 
 /*

@@ -44,9 +44,6 @@
 /* Define to 1 if you have the `reallocarray' function. */
 #mesondefine HAVE_REALLOCARRAY
 
-/* Define to 1 if you have the `strcasestr' function. */
-#mesondefine HAVE_STRCASESTR
-
 /* Define to 1 if you have the `strlcat' function. */
 #mesondefine HAVE_STRLCAT
 
@@ -96,9 +93,6 @@
 
 /* Support Xdmcp */
 #mesondefine XDMCP
-
-/* Build XFree86 BigFont extension */
-#mesondefine XF86BIGFONT
 
 /* Support XFree86 Video Mode extension */
 #mesondefine XF86VIDMODE
@@ -177,6 +171,9 @@
 
 /* Use libpciaccess */
 #mesondefine XSERVER_LIBPCIACCESS
+
+/* Have the pci_device_is_boot_display function */
+#mesondefine HAVE_PCI_DEVICE_IS_BOOT_DISPLAY
 
 /* X Access Control Extension */
 #mesondefine XACE

@@ -32,6 +32,9 @@
 #include "os/cmdline.h"
 #include "os/ddx_priv.h"
 #include "os/osdep.h"
+#ifdef DPMSExtension
+#include "Xext/dpms/dpms_priv.h"
+#endif
 
 #include "kdrive.h"
 #include <dixstruct.h>
@@ -47,10 +50,6 @@
 
 #ifdef XV
 #include "kxv.h"
-#endif
-
-#ifdef DPMSExtension
-#include "dpmsproc.h"
 #endif
 
 #ifdef HAVE_EXECINFO_H
@@ -108,6 +107,18 @@ static Bool kdCaughtSignal = FALSE;
  */
 const KdOsFuncs *kdOsFuncs = NULL;
 
+static void
+KdDPMS(ScreenPtr pScreen, int mode)
+{
+    KdScreenPriv(pScreen);
+
+    if (pScreenPriv->enabled &&
+        pScreenPriv->card->cfuncs->dpms &&
+        pScreenPriv->card->cfuncs->dpms(pScreen, mode)) {
+        pScreenPriv->dpmsState = mode;
+    }
+}
+
 void
 KdDisableScreen(ScreenPtr pScreen)
 {
@@ -123,8 +134,7 @@ KdDisableScreen(ScreenPtr pScreen)
     if (!pScreenPriv->screen->softCursor &&
         pScreenPriv->card->cfuncs->disableCursor)
         (*pScreenPriv->card->cfuncs->disableCursor) (pScreen);
-    if (pScreenPriv->card->cfuncs->dpms)
-        (*pScreenPriv->card->cfuncs->dpms) (pScreen, KD_DPMS_NORMAL);
+    KdDPMS(pScreen, KD_DPMS_NORMAL);
     pScreenPriv->enabled = FALSE;
     if (pScreenPriv->card->cfuncs->disable)
         (*pScreenPriv->card->cfuncs->disable) (pScreen);
@@ -189,7 +199,7 @@ KdEnableScreen(ScreenPtr pScreen)
         if (!(*pScreenPriv->card->cfuncs->enable) (pScreen))
             return FALSE;
     pScreenPriv->enabled = TRUE;
-    pScreenPriv->dpmsState = KD_DPMS_NORMAL;
+    KdDPMS(pScreen, KD_DPMS_NORMAL);
     pScreenPriv->card->selected = pScreenPriv->screen->mynum;
     if (!pScreenPriv->screen->softCursor &&
         pScreenPriv->card->cfuncs->enableCursor)
@@ -198,8 +208,6 @@ KdEnableScreen(ScreenPtr pScreen)
         (*pScreenPriv->card->cfuncs->enableAccel) (pScreen);
     KdEnableColormap(pScreen);
     SetRootClip(pScreen, ROOT_CLIP_FULL);
-    if (pScreenPriv->card->cfuncs->dpms)
-        (*pScreenPriv->card->cfuncs->dpms) (pScreen, pScreenPriv->dpmsState);
     return TRUE;
 }
 
@@ -679,8 +687,7 @@ Bool KdCloseScreen(ScreenPtr pScreen)
 
     ret = fbCloseScreen(pScreen);
 
-    if (pScreenPriv->dpmsState != KD_DPMS_NORMAL)
-        (*card->cfuncs->dpms) (pScreen, KD_DPMS_NORMAL);
+    KdDPMS(pScreen, KD_DPMS_NORMAL);
 
     if (screen->mynum == card->selected)
         KdDisableScreen(pScreen);
@@ -749,11 +756,8 @@ Bool KdSaveScreen(ScreenPtr pScreen, int on)
     case SCREEN_SAVER_FORCER:
         break;
     }
-    if (dpmsState != pScreenPriv->dpmsState) {
-        if (pScreenPriv->enabled)
-            (*pScreenPriv->card->cfuncs->dpms) (pScreen, dpmsState);
-        pScreenPriv->dpmsState = dpmsState;
-    }
+
+    KdDPMS(pScreen, dpmsState);
     return TRUE;
 }
 
@@ -973,6 +977,15 @@ Bool KdScreenInit(ScreenPtr pScreen, int argc, char **argv)
             (*card->cfuncs->enableAccel) (pScreen);
     }
 
+#ifdef DPMSExtension
+    if (card->cfuncs->dpms && !DPMSDisabledSwitch) {
+        DPMSStandbyTime = 0;
+        DPMSSuspendTime = 0;
+        DPMSOffTime = 0;
+        pScreen->DPMS = KdDPMS;
+    }
+#endif
+
     return TRUE;
 }
 
@@ -1101,11 +1114,17 @@ KdInitOutput(int argc, char **argv)
 
     if (!kdCardInfo) {
         InitCard(0);
-        if (!(card = KdCardInfoLast()))
-            FatalError("No matching cards found!\n");
+    }
+
+    if (!(card = KdCardInfoLast()))
+        FatalError("No matching cards found!\n");
+
+    /* Add at least one screen */
+    if (!card->screenList) {
         screen = KdScreenInfoAdd(card);
         KdParseScreen(screen, 0);
     }
+
     /*
      * Initialize all of the screens for all of the cards
      */
@@ -1143,8 +1162,7 @@ KdInitOutput(int argc, char **argv)
 #endif
 }
 
-void
-OsVendorFatalError(const char *f, va_list args)
+void ddxFatalError(const char *f, va_list args)
 {
 }
 

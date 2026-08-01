@@ -2,19 +2,18 @@ project('xserver', 'c',
         default_options: [
             'buildtype=debugoptimized',
             'c_std=gnu99',
+            'warning_level=1',
         ],
-        version: '25.1.0',
+        version: '25.2.0',
         meson_version: '>= 0.61.0',
 )
-release_date = '2025-12-21'
+release_date = '2026-06-21'
 
 cc = meson.get_compiler('c')
 
 add_project_arguments('-fno-strict-aliasing', language : 'c')
 add_project_arguments('-fvisibility=hidden', language : 'c')
-add_project_arguments('-Wvla', language: 'c')
 add_project_arguments('-fno-common', language: 'c')
-add_project_arguments('-Wshift-negative-value', language: 'c')
 add_project_arguments('-Wchar-subscripts', language: 'c')
 
 # workaround for mesa bug causing GLsync to be typedef'ed multiple times
@@ -37,7 +36,6 @@ conf_data.set('_DIX_CONFIG_H_', '1')
 
 if cc.get_id() == 'gcc' or cc.get_id() == 'clang'
     test_wflags = [
-        '-Wall',
         '-Wchar-subscripts',
         '-Wpointer-arith',
         '-Wmissing-declarations',
@@ -67,6 +65,7 @@ if cc.get_id() == 'gcc' or cc.get_id() == 'clang'
         '-Werror=int-to-pointer-cast',
         '-Werror=pointer-to-int-cast',
         '-Woverride-init',
+        '-Wshift-negative-value',
         '-Wvla',
         '-Wincompatible-pointer-types',
     ]
@@ -114,7 +113,6 @@ xf86driproto_dep = dependency('xf86driproto', version: '>= 2.1.0', fallback: ['x
 dri2proto_dep = dependency('dri2proto', version: '>= 2.8', fallback: ['xorgproto', 'ext_xorgproto'], required: get_option('dri2') == 'true')
 dri3proto_dep = dependency('dri3proto', version: '>= 1.4', fallback: ['xorgproto', 'ext_xorgproto'], required: get_option('dri3') == 'true')
 xineramaproto_dep = dependency('xineramaproto', fallback: ['xorgproto', 'ext_xorgproto'])
-xf86bigfontproto_dep = dependency('xf86bigfontproto', version: '>= 1.2.0', fallback: ['xorgproto', 'ext_xorgproto'], required: get_option('xf86bigfont'))
 xf86vidmodeproto_dep = dependency('xf86vidmodeproto', version: '>= 2.2.99.1', fallback: ['xorgproto', 'ext_xorgproto'])
 applewmproto_dep = dependency('applewmproto', version: '>= 1.4', fallback: ['xorgproto', 'ext_xorgproto'], required: false)
 xshmfence_dep = dependency('xshmfence', version: xshmfence_req, required: false)
@@ -388,6 +386,113 @@ if build_glamor
     epoxy_dep = dependency('epoxy', required: false)
 endif
 
+gbm_option = get_option('gbm')
+if gbm_option == 'auto'
+    build_gbm = gbm_dep.found()
+else
+    build_gbm = (gbm_option == 'true')
+endif
+
+if build_gbm and not gbm_dep.found()
+    error('libgbm support requested, but libgbm is not available')
+endif
+
+# Don't even link to libgbm
+if not build_gbm
+    gbm_dep = dependency('', required: false)
+endif
+
+# Lots of sha1 options, because Linux is about choice :)
+
+# The idea behind the ordering here is that we should first prefer system
+# builtin providers, and then smaller implementations of over larger ones.
+test_sha1 = [
+    'libc',          # libmd API is in libc on some BSDs
+    'CommonCrypto',  # darwin API
+    'CryptoAPI',     # windows API
+    'libmd',         # other BSDs & Solaris
+    'libsha1',       # "a tiny library providing a SHA1 implementation, created for facilitating X server compilation on embedded devices where larger libraries containing SHA1 implementations are not needed"
+    'libnettle',
+    'libgcrypt',     # in debian base system
+    'libcrypto',
+]
+
+if get_option('sha1') != 'auto'
+    test_sha1 = [get_option('sha1')]
+endif
+
+sha1_found = false
+foreach t : test_sha1
+    if t == 'libc'
+        if cc.has_function('SHA1Init')
+            sha1_found = true
+            sha1_dep = dependency('', required: false)
+        endif
+    elif t == 'CommonCrypto'
+        if cc.has_function('CC_SHA1_Init')
+            sha1_found = true
+            sha1_dep = dependency('', required: false)
+        endif
+    elif t == 'CryptoAPI'
+        if cc.has_header('wincrypt.h')
+            sha1_found = true
+            sha1_dep = dependency('', required: false)
+        endif
+    elif t == 'libmd'
+        md_dep = cc.find_library('md', required: false)
+        if md_dep.found()
+            sha1_found = true
+            sha1_dep = md_dep
+        endif
+    elif t == 'libsha1'
+        libsha1_dep = dependency('libsha1', required: false)
+        if libsha1_dep.found()
+            sha1_found = true
+            sha1_dep = libsha1_dep
+        endif
+    elif t == 'libnettle'
+        nettle_dep = dependency('nettle', version: '>= 2.6', required: false)
+        if nettle_dep.found()
+            sha1_found = true
+            sha1_dep = nettle_dep
+        endif
+    elif t == 'libgcrypt'
+        gcrypt_dep = dependency('libgcrypt', required: false)
+        if gcrypt_dep.found()
+            sha1_found = true
+            sha1_dep = gcrypt_dep
+        endif
+    elif t == 'libcrypto'
+        # we don't need all of OpenSSL, just libcrypto
+        libcrypto_dep = cc.find_library('crypto', required: false)
+        openssl_dep = dependency('openssl', required: false)
+        if libcrypto_dep.found() or openssl_dep.found()
+            sha1_found = true
+            if libcrypto_dep.found()
+               sha1_dep = libcrypto_dep
+            else
+               sha1_dep = openssl_dep
+            endif
+        endif
+    endif
+
+    if sha1_found
+        sha1 = t
+        break
+    endif
+endforeach
+
+if sha1_found
+    message('Using @0@ SHA1 functions'.format(sha1))
+else
+    if get_option('sha1') != 'auto'
+        error('@0@ SHA1 requested, but not found'.format(get_option('sha1')))
+    else
+        error('No suitable SHA1 implementation found')
+    endif
+endif
+
+>>>>>>> 856d325dea7addc4dd9c2c78a6bfedf37cbeeead
 build_xdmcp = get_option('xdmcp')
 xdmcp_dep = dependency('xdmcp', required : build_xdmcp)
 
@@ -458,7 +563,7 @@ if not libdrm_dep.found() and libdrm_required
     error('DRI requested, but LIBDRM not found')
 endif
 
-build_modesetting = libdrm_dep.found() and dri2proto_dep.found() and gbm_dep.found()
+build_modesetting = libdrm_dep.found() and dri2proto_dep.found() and build_gbm
 
 build_vgahw = false
 if get_option('vgahw') == 'auto'
@@ -476,7 +581,6 @@ if build_xquartz
     build_dpms = false
 endif
 
-build_xf86bigfont = get_option('xf86bigfont')
 build_screensaver = get_option('screensaver')
 build_res = get_option('xres')
 if build_res
@@ -559,7 +663,6 @@ common_dep = [
     dri2proto_dep,
     dri3proto_dep,
     xineramaproto_dep,
-    xf86bigfontproto_dep,
     xf86dgaproto_dep,
     xf86vidmodeproto_dep,
     applewmproto_dep,
@@ -576,8 +679,6 @@ inc = include_directories(
     '.',
     'Xext',
     'Xext/dri2',
-    'Xi',
-    'composite',
     'exa',
     'fb',
     'glamor',
@@ -585,14 +686,8 @@ inc = include_directories(
     'miext/damage',
     'miext/shadow',
     'miext/sync',
-    'dbe',
     'dix',
-    'dri3',
     'include',
-    'present',
-    'randr',
-    'render',
-    'xfixes',
     epoll_inc,
 )
 
@@ -622,8 +717,6 @@ endif
 if get_option('libunwind')
     common_dep += dependency('libunwind', required: true)
 endif
-
-glx_inc = include_directories('glx')
 
 top_dir_inc = include_directories('.')
 
@@ -686,30 +779,16 @@ subdir('doc')
 if build_xserver
     subdir('config')
     subdir('dix')
-    subdir('dri3')
-    subdir('glx')
     subdir('fb')
     subdir('mi')
     subdir('os')
-    subdir('composite')
-    subdir('dbe')
     subdir('miext/damage')
     subdir('miext/shadow')
     subdir('miext/sync')
     if build_rootless
         subdir('miext/rootless')
     endif
-    subdir('present')
-    if build_xwin or build_xquartz
-        subdir('pseudoramiX')
-    endif
-    subdir('randr')
-    subdir('record')
-    subdir('render')
-    subdir('xfixes')
-    subdir('xkb')
     subdir('Xext')
-    subdir('Xi')
     if build_glamor
         subdir('glamor')
     endif
@@ -728,16 +807,33 @@ if build_xserver
         libxserver_miext_damage,
         libxserver_render,
         libxserver_present,
+        libxserver_xres,
         libxserver_xext,
+        libxserver_xcmisc,
+        libxserver_sync,
+        libxserver_security,
         libxserver_miext_sync,
         libxserver_xfixes,
         libxserver_xi,
-        libxserver_xkb,
+        libxserver_xkeyboard,
         libxserver_record,
         libxserver_os,
         libxserver_dri2,
-        libxserver_dri3
+        libxserver_dri3,
+        libxserver_xinerama,
+        libxserver_shm,
+        libxserver_dpms,
+        libxserver_xv,
+        libxserver_xtest,
+        libxserver_shape,
+        libxserver_saver,
+        libxserver_bigreq,
+        libxserver_geext
     ]
+
+    if build_xselinux
+        libxserver += libxserver_xselinux
+    endif
 
     if build_namespace
         subdir('Xext/namespace')

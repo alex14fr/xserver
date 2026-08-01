@@ -33,10 +33,17 @@ typedef struct glamor_egl_screen_private {
 #ifdef GLAMOR_HAS_GBM
     struct gbm_device *gbm;
     int fast_gbm_import;
+    int can_texture_gbm_bo;
+#ifdef EGL_MESA_image_dma_buf_export
+    int has_image_dma_buf_export;
 #endif
+#endif
+
+    int has_EXT_EGL_image_storage;
+    int has_OES_EGL_image;
+
     int fd;
     int dmabuf_capable;
-    int linear_only; /* When using gbm, this means that only linear buffers can be created */
 } glamor_egl_priv_t;
 
 /**
